@@ -1,4 +1,0 @@
-ncaa
-====
-
-March Madness prediction
