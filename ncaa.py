@@ -70,10 +70,12 @@ Freely distributable under the MIT License.
 from sqlalchemy import *
 from sqlalchemy.orm import relationship, backref, sessionmaker, reconstructor
 from sqlalchemy.ext.declarative import declarative_base
-from collections import OrderedDict
 # Standard Library
 import re
 import datetime
+import operator
+from collections import OrderedDict
+
 
 # Try to load fuzzy text matching libraries, in order of (my) preference
 fuzzymatch = None
@@ -93,11 +95,14 @@ except ImportError:
 
 
 
+
 ## ---- CLASSES ---- //
 
 
 
+
 Base = declarative_base()
+
 
 
 
@@ -122,6 +127,9 @@ class Game(Base):
     Many-to-many map to Squads via Schedule, one-to-many map to
     PlayerStatSheets.'''
     __tablename__ = 'game'
+    
+    discriminator = Column(String)
+    __mapper_args__ = {'polymorphic_on' : discriminator}
     
     id = Column(Integer, primary_key=True)
 
@@ -241,6 +249,7 @@ class Player(Base):
     
     def __repr__(self):
         return "<Player('%s %s')>" % (self.first_name, self.last_name)
+
 
 
 
@@ -375,6 +384,7 @@ class Squad(Base):
 
 
 
+
 # - Team -- /
 class Team(Base):
     '''Teams contain a relationship to Squads for any available years.
@@ -401,6 +411,7 @@ class Team(Base):
 
     def __repr__(self):
         return "<Team('%s')>" % self.name
+
 
 
 
@@ -432,9 +443,210 @@ class TeamAlias(Base):
 
 
 
-#class Tournament(Base):
-#    '''Tournament is a binary tree, made up of TournamentNodes.'''
+# - TournamentGame -- /
+class TournamentGame(Game):
+    '''Subclass of Game. Polymorphic: TournamentGame can stand in for Game.'''
+    __tablename__ = 'tournygame'
+    __mapper_args__ = {'polymorphic_identity' : 'tourneygame'}
+    id = Column(Integer, ForeignKey('game.id'), primary_key=True)
     
+    index = Column(Integer)
+
+    tournament_id = Column(Integer, ForeignKey('tournament.id'))
+    tournament = relationship('Tournament',
+                              backref=backref('games', order_by=index))
+        
+    def __init__(self, tournament, index):
+        self.index = index
+        self.tournament = tournament
+
+    def next(self):
+        next_idx = ((self.index+1) / 2) - 1
+        if next_idx < 0:
+            return None
+        return self.tournament.get_by_id(next_idx)
+
+    def __iter__(self):
+        return self
+
+    def __repr__(self):
+        round, region, n = self.tournament.lookup(self.index)
+        return "<TournamentGame('%s', '%s', '%s', '%s')>" \
+                % (self.tournament.season, round, region, n)
+
+
+
+
+# - Tournament -- /
+class Tournament(Base):
+    '''Tournament is an iterable binary heap, which is accessible using
+    common names for rounds and regions. These names are configurable on
+    initialization. Games are stored as TournamentGames. Neither of the
+    Tournament data structures are stored in the stats DB.'''
+    __tablename__ = 'tournament'
+
+    id = Column(Integer, primary_key=True)
+
+    regions_store = Column(String)
+    rounds_store = Column(String) 
+    delim = Column(String)
+    season = Column(String)
+
+    # Note: games = many-to-one relationship to Tournament.games
+
+    def __init__(self, season,
+                 regions=['North', 'East', 'South', 'West'],
+                 rounds=None, delim='/'):
+
+        self.season = season
+        self.regions_store = '|'.join(regions)
+        self.regions = regions # transient
+        
+        self.delim = delim
+
+        if rounds is not None:
+            self.rounds_store = '|'.join(rounds)
+
+        self._reconstruct()
+
+    @reconstructor
+    def _reconstruct(self):
+        if self.rounds_store is None:
+            self.rounds = ['finals', 'finalfour',
+                            'elite8', 'sweet16', '2nd', '1st']
+        else:
+            self.rounds = self.rounds_store.split('|')
+
+        if not self.regions:
+            self.regions = self.regions_store.split('|')
+
+        if self.games is None or not len(self.games):
+            self.games = [TournamentGame(self, i)
+                            for i in range((1<<len(self.rounds))-1)]
+
+    def lookup(self, n):
+        # Find depth in tree
+        n += 1
+        round_id = log2(n)
+
+        # Find horizontal offset in tree
+        k = n - (1<<round_id)
+
+        # Calculate number of elements in each region in this level of tree
+        gsize = (1<<round_id) / len(self.regions)
+
+        # If gsize is 0, special case.
+        if gsize==0:
+            if round_id==0:
+                return (self.rounds[round_id], None, None,)
+            else:
+                tname = ""
+                if n<=2:
+                    # First two teams coincide
+                    tname = self.delim.join(self.regions[:2])
+                else:
+                    # Second two teams coincide
+                    tname = self.delim.join(self.regions[-2:])
+                return (self.rounds[round_id], tname, None)
+
+        # Find regional ID
+        region_id = k / gsize
+
+        # And position within region
+        num = k % gsize
+
+        return (self.rounds[round_id], self.regions[region_id], num)
+
+    def set(self, data, round_, region=0, n=0):
+        idx = self.index(round_, region, n)
+        self.games[idx] = data
+         
+    def index(self, round_, region=0, n=0):
+        if type(region) is not int:
+            if region is None:
+                region = 0
+            else:
+                if self.delim in region:
+                    region = region.partition(self.delim)[0]
+                region = self.regions.index(region)
+        
+        if type(round_) is not int:
+            round_ = self.rounds.index(round_)
+
+        # Translate depth to row-initial index
+        rowinitid = (1<<round_) - 1
+
+        # Get number of games in each region
+        gsize = (1<<round_) / 4
+        
+        # Special case if finalfour or finals
+        if not gsize:
+            if not round_:
+                # Finals
+                return 0
+            else:
+                # Final four
+                return (region/2)+1
+
+        # Find horizontal offset in row
+        return rowinitid + (region*gsize) + n
+        
+    def get(self, round_, region=0, n=0):
+        idx = self.index(round_, region, n)
+        return self.games[idx]
+
+    def get_by_id(self, n):
+        return self.games[n]
+
+    def set_by_id(self, n, data):
+        self.games[n] = data
+
+    def __getitem__(self, n):
+        return self.games[n]
+
+    def __setitem__(self, n, data):
+        self.games[n] = data
+
+    def simulate(self, decide):
+        for tgame in self:
+            if len(tgame.opponents)!=2:
+                raise IndexError
+            r = decide(*tgame.opponents)
+            if type(r) is tuple:
+                tgame.winner = r[0]
+                tgame.loser = r[0]
+            else:
+                tgame.winner = r[0]
+                lid = (tgame.opponents.index(r[0])+1)%2
+                tgame.loser = tgame.opponents[lid]
+
+            nextroundgame = tgame.next()
+            
+            if nextroundgame:
+                nextroundgame.opponents.append(tgame.winner)
+
+    def __iter__(self):
+        class TournamentIterator(object):
+            def __init__(self, m):
+                self.__o = m
+                self.index = len(m)
+
+            def next(self):
+                if self.index==0:
+                    raise StopIteration
+                self.index -= 1
+                return self.__o.get_by_id(self.index)
+        return TournamentIterator(self)
+
+    def __len__(self):
+        return len(self.games)
+
+    def __repr__(self):
+        return "<Tournament('%s')>" % self.season
+
+    def export(self):
+        '''Serialize tournament'''
+        raise NotImplementedError
 
 
 
@@ -446,6 +658,17 @@ def normalize_name(name):
 
 
 
+
+def log2(x):
+    t = 0
+    while x > 1:
+        x >>= 1
+        t += 1
+    return t
+
+
+
+
 def get_team_by_name(session, name):
     '''Convenience function for searching teams by name. Returns a Team
     if one is found, otherwise returns None.'''
@@ -454,6 +677,7 @@ def get_team_by_name(session, name):
     if ta is None:
         return None
     return ta.team
+
 
 
 
@@ -507,6 +731,7 @@ def load_db(path):
     engine = create_engine('sqlite:///%s'%path)
     Session = sessionmaker(bind=engine)
     return Session()
+
 
 
 
