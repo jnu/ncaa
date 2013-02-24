@@ -142,13 +142,16 @@ class Game(Base):
     loser = relationship('Squad', foreign_keys=[loser_id],
                          backref=backref('losses', order_by=date))
     loser_score = Column(Integer)
+    
+    # Post season
+    postseason = Column(Boolean)
 
     arena = Column(String)
     # NOTE boxscore = one-to-many map to PlayerStatSheets.
 
     def __init__(self, first_team, second_team, date, location=None,
                  loser=None, winner=None,
-                 winner_score=None, loser_score=None):
+                 winner_score=None, loser_score=None, postseason=False):
         # First and 2nd Teams and date are mandatory. Location is optional. If
         # the location is specified, make it equal to one of the Team's names,
         # if that team was the home team. Sometimes (especially in the
@@ -160,6 +163,8 @@ class Game(Base):
         self.opponents.append(second_team)
         self.date = date
         self.arena = location
+        
+        self.postseason = postseason
         
         self.winner_score = winner_score
         self.loser_score = loser_score
@@ -236,7 +241,6 @@ class Player(Base):
     
     def __repr__(self):
         return "<Player('%s %s')>" % (self.first_name, self.last_name)
-
 
 
 
@@ -428,6 +432,13 @@ class TeamAlias(Base):
 
 
 
+#class Tournament(Base):
+#    '''Tournament is a binary tree, made up of TournamentNodes.'''
+    
+
+
+
+
 # -- HELPER FUNCTIONS -- //
 def normalize_name(name):
     '''Normalize team name to upper case and with no non-alpha-numeric chars.'''
@@ -487,6 +498,15 @@ def fuzzy_match_team(session, name, threshold=.9, matcher=fuzzymatch):
     # Sort results and return
     return OrderedDict(sorted(unique_results.items(), key=lambda d: d[1]))
 
+
+
+
+def load_db(path):
+    '''Convenience function to make an engine and create a session. Returns
+    new session.'''
+    engine = create_engine('sqlite:///%s'%path)
+    Session = sessionmaker(bind=engine)
+    return Session()
 
 
 

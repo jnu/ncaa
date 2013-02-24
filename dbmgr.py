@@ -32,8 +32,10 @@ Freely distributable under the MIT License.
 from ncaa import *
 from output import *
 # Third Party Modules
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData, Table, exc
 from sqlalchemy.orm import sessionmaker
+import sqlalchemy.engine.ddl
+import sqlalchemy
 from nameparser import HumanName
 # Standard Library
 from sys import argv, exit, stderr
@@ -84,11 +86,14 @@ def parse_minutes(mp):
 
 def get_int(val, empty=0):
     try:
-        return int(val)
+        return int(float(val))
     except ValueError:
-        if len(val)==0:
-            return empty
-        return None
+        try:
+            return int(re.sub(r'[^\d]', '', val))
+        except ValueError:
+            if len(val)==0:
+                return empty
+            return None
 
 
 def get_float(val):
@@ -136,6 +141,101 @@ def create_new_team_prompt(session, name, yesall=None):
 
 
 
+_new_sa_ddl = re.match(r'^0\.(7|8)', sqlalchemy.__version__) is not None
+
+def create_and_upgrade(engine, metadata):
+    '''Ensure all tables in DB are in Class and vice versa. Based on solution
+    on SO by jon /http://stackoverflow.com/questions/2103274/sqlalchemy-add\
+    -new-field-to-class-and-create-corresponding-column-in-table'''
+    db_metadata = MetaData()
+    db_metadata.bind = engine
+
+    for model_table in metadata.sorted_tables:
+        try:
+            db_table = Table(model_table.name, db_metadata, autoload=True)
+        except exc.NoSuchTableError:
+            print_comment('Creating table %s' % model_table.name)
+            model_table.create(bind=engine)
+        else:
+            if _new_sa_ddl:
+                ddl_c = engine.dialect.ddl_compiler(engine.dialect, None)
+            else:
+                # 0.6
+                ddl_c = engine.dialect.ddl_compiler(engine.dialect, db_table)
+            # else:
+                # 0.5
+                # ddl_c = engine.dialect.schemagenerator(engine.dialect,
+                #               engine.contextual_connect())
+
+            print_info("Table %s exists. Checking for missing columns ..." \
+                        % model_table.name)
+
+            model_columns = _column_names(model_table)
+            db_columns = _column_names(db_table)
+
+            to_create = model_columns - db_columns
+            to_remove = db_columns - model_columns
+            to_check = db_columns.intersection(model_columns)
+
+            for c in to_create:
+                model_column = getattr(model_table.c, c)
+                print_good("Adding column %s.%s" % (model_table.name,
+                                                    model_column.name))
+                try:
+                    assert not model_column.constraints
+                except:
+                    print_error("Can't add columns to constrained table.")
+                    exit(41)
+
+                model_col_spec = ddl_c.get_column_specification(model_column)
+                sql = 'ALTER TABLE %s ADD %s' % (model_table.name,
+                                                 model_col_spec)
+                engine.execute(sql)
+
+            # It's difficult to reliably determine if the model has changed 
+            # a column definition. E.g. the default precision of columns
+            # is None, which means the database decides. Therefore when I look
+            # at the model it may give the SQL for the column as INTEGER but
+            # when I look at the database I have a definite precision,
+            # therefore the returned type is INTEGER(11)
+
+            for c in to_check:
+                model_column = model_table.c[c]
+                db_column = db_table.c[c]
+                x =  model_column == db_column
+
+                print_comment("Checking column %s.%s" % (model_table.name,
+                                                         model_column.name))
+                model_col_spec = ddl_c.get_column_specification(model_column)
+                db_col_spec = ddl_c.get_column_specification(db_column)
+
+                model_col_spec = re.sub(r'[(][\d ,]+[)]', '', model_col_spec)
+                db_col_spec = re.sub(r'[(][\d ,]+[)]', '', db_col_spec)
+                db_col_spec = db_col_spec.replace('DECIMAL', 'NUMERIC')
+                db_col_spec = db_col_spec.replace('TINYINT', 'BOOL')
+
+                if model_col_spec != db_col_spec:
+                    print_warning("Column %s.%s has specification %r in the \
+model but %r in the database" % (model_table.name, model_column.name,
+                                 model_col_spec, db_col_spec))
+
+                if model_column.constraints or db_column.constraints:
+                    # TODO, check constraints
+                    print_warning("Contraints not checked (not implemented")
+
+            for c in to_remove:
+                model_column = getattr(db_table.c, c)
+                print_warning("Column %s.%s in the database is not in \
+the model ... leaving be, for now." % (model_table.name, model_column.name))
+
+
+def _column_names(table):
+    # Autoloaded columns return unicode column names
+    return set((unicode(i.name) for i in table.c)) 
+
+
+
+
 # -- MAIN -- //
 
 
@@ -180,6 +280,7 @@ player to database', default=None)
     # Create tables
     print_comment("Verifying DB structure ...")
     Base.metadata.create_all(engine)
+    create_and_upgrade(engine, Base.metadata)
 
     # Begin a session
     print_info("Beginning session ...")
