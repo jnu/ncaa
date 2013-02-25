@@ -74,7 +74,7 @@ from sqlalchemy.ext.declarative import declarative_base
 import re
 import datetime
 import operator
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 
 # Try to load fuzzy text matching libraries, in order of (my) preference
@@ -153,6 +153,7 @@ class Game(Base):
     
     # Post season
     postseason = Column(Boolean)
+    overtime = Column(Integer)
 
     arena = Column(String)
     # NOTE boxscore = one-to-many map to PlayerStatSheets.
@@ -265,13 +266,19 @@ class SquadMember(Base):
     player = relationship('Player', backref=backref('career', order_by=id))
 
     squad_id = Column(Integer, ForeignKey('squad.id'))
-    squad = relationship('Squad', backref=backref('roster', order_by=id)) 
+    squad = relationship('Squad', backref=backref('roster', order_by=id))
+    
+    stats_id = Column(Integer, ForeignKey('statscache.id'))
+    stats = relationship('SquadMemberDerivedStats', backref=backref('referent',
+                                                               uselist=False,
+                                                               order_by=id))
 
     # NOTE statsheets = one-to-many mapping to PlayerStatSheets
 
     # Vital-ish stats
     jersey = Column(Integer)
     year = Column(String)       # i.e., year in college (Freshman, etc.)
+    
 
     def __init__(self, player, squad, jersey=None, year=None):
         self.player = player
@@ -281,10 +288,51 @@ class SquadMember(Base):
         if year is not None:
             self.year = year
 
-    @reconstructor
+    #@reconstructor
     def _reconstruct(self):
-        # Calculate transient stats here
-        return
+        if self.stats is None:
+            self.derive_stats()
+    
+    def derive_stats(self):
+        '''Calculate and cache derived statistics'''
+        derived_stats = defaultdict(float)
+        
+        for statsheet in self.statsheets:
+            # Sum statsheets
+            minutes_played = statsheet.minutes_played
+            
+            if minutes_played:
+                derived_stats['games_played'] += 1.0
+            else:
+                # Played 0 minutes in this game, move on
+                continue
+                
+            for stat in statsheet.stats:
+                val = getattr(statsheet, stat)
+                if val is None:
+                    # Data is N/A. Interpret as 0.
+                    continue
+                derived_stats[stat] += val
+    
+        # Calculate percentages and averages
+        for newfield, rat in DerivedStats.pctfields.items():
+            num, den = rat
+            if type(den) is str:
+                den = derived_stats[den]
+            if den == 0.0:
+                # Denominator is 0, interpret error as 0.
+                derived_stats[newfield] = 0.0
+            else:
+                derived_stats[newfield] = derived_stats[num] / den
+
+        # Store the derived stats
+        if self.stats is not None:
+            # Update old entry
+            for stat, val in derived_stats.items():
+                self.stats[stat] = val
+        else:
+            # Create new entry
+            self.stats = SquadMemberDerivedStats(derived_stats)
 
     def __repr__(self):
         return "<SquadMember('%s %s', '%s', '%s')>" % \
@@ -309,31 +357,41 @@ class PlayerStatSheet(Base):
     game = relationship('Game', backref=backref('boxscore', order_by=id))
 
     # Individual Game Statistics
-    # TODO Lazy or eager calculation of career statistics?
-    #games_played = Column(Integer)
     minutes_played = Column(Float)
     field_goals_made = Column(Integer)
     field_goals_attempted = Column(Integer)
-    #field_goal_percentage = Column(Float)
     threes_made = Column(Integer)
     threes_attempted = Column(Integer)
-    #three_percentage = Column(Float)
     free_throws_made = Column(Integer)
     free_throws_attempted = Column(Integer)
-    #free_throw_percentage = Columns(Float)
     points = Column(Integer)
-    #points_per_game = Column(Float)
     offensive_rebounds = Column(Integer)
     defensive_rebounds = Column(Integer)
     rebounds = Column(Integer)
-    #rebounds_per_game = Column(Float)
     assists = Column(Integer)
     turnovers = Column(Integer)
     steals = Column(Integer)
     blocks = Column(Integer)
     fouls = Column(Integer)
-    #double_doubles = Column(Integer)
-    #triple_doubles = Column(Integer)
+    
+    stats = [
+        'minutes_played',
+        'field_goals_made',
+        'field_goals_attempted',
+        'threes_made',
+        'threes_attempted',
+        'free_throws_made',
+        'free_throws_attempted',
+        'points',
+        'offensive_rebounds',
+        'defensive_rebounds',
+        'rebounds',
+        'assists',
+        'turnovers',
+        'steals',
+        'blocks',
+        'fouls',
+    ]
 
     def __repr__(self):
         name = "%s %s" % (self.squadmember.player.first_name,
@@ -342,6 +400,132 @@ class PlayerStatSheet(Base):
                               self.game.opponents[1].team.name)
         date = self.game.date.strftime('%h %d, %Y')
         return "<PlayerStatSheet('%s', '%s', '%s')>" % (name, game, date)
+    
+
+
+
+class DerivedStats(Base):
+    __tablename__ = 'statscache'
+    id = Column(Integer, primary_key=True)
+    
+    # Polymorphic: DerivedStatsPlayer, DerivedStatsSquad
+    type = Column(String)
+    __mapper_args__ = {'polymorphic_on' : type}
+    
+    # One-to-One relationship with Squad / SquadMember
+
+    # Derived statistics -- all calculated on load, stored in self.stats
+    sumfields = [
+        # Sums
+        'minutes_played',
+        'field_goals_made',
+        'field_goals_attempted',
+        'threes_made',
+        'threes_attempted',
+        'free_throws_made',
+        'free_throws_attempted',
+        'points',
+        'offensive_rebounds',
+        'defensive_rebounds',
+        'rebounds',
+        'assists',
+        'turnovers',
+        'steals',
+        'blocks',
+        'fouls',
+    ]
+    
+    pctfields = {
+        # Ratios
+        'fg_pct'     : ('field_goals_made', 'field_goals_attempted'),
+        'threes_pct' : ('threes_made', 'threes_attempted'),
+        'ft_pct'     : ('free_throws_made', 'free_throws_attempted'),
+        'ppm'        : ('points', 'minutes_played'),
+        'lpm'        : ('field_goals_attempted', 'minutes_played'),
+        # Averages
+        'field_goal_avg' : ('field_goals_made', 'games_played'),
+        'looks_avg'      : ('field_goals_attempted', 'games_played'),
+        'threes_avg'     : ('threes_made', 'games_played'),
+        'free_throws_avg': ('free_throws_made', 'games_played'),
+        'points_avg'     : ('points', 'games_played'),
+        'rebounds_avg'   : ('rebounds', 'games_played'),
+        'steals_avg'     : ('steals', 'games_played'),
+        'assists_avg'    : ('assists', 'games_played'),
+        'blocks_avg'     : ('blocks', 'games_played'),
+        'fouls_avg'      : ('fouls', 'games_played'),
+        'turnovers_avg'  : ('turnovers', 'games_played'),
+    }
+    
+    # Sums
+    games_played = Column(Float)
+    minutes_played = Column(Float)
+    field_goals_made = Column(Float)
+    field_goals_attempted = Column(Float)
+    threes_made = Column(Float)
+    threes_attempted = Column(Float)
+    free_throws_made = Column(Float)
+    free_throws_attempted = Column(Float)
+    points = Column(Float)
+    offensive_rebounds = Column(Float)
+    defensive_rebounds = Column(Float)
+    rebounds = Column(Float)
+    assists = Column(Float)
+    turnovers = Column(Float)
+    steals = Column(Float)
+    blocks = Column(Float)
+    fouls = Column(Float)
+
+    # Ratios
+    fg_pct = Column(Float)
+    threes_pct = Column(Float)
+    ft_pct = Column(Float)
+    ppm = Column(Float)
+    lpm = Column(Float)
+    
+    # Averages
+    field_goal_avg = Column(Float)
+    looks_avg = Column(Float)
+    threes_avg = Column(Float)
+    free_throws_avg = Column(Float)
+    points_avg = Column(Float)
+    rebounds_avg = Column(Float)
+    steals_avg = Column(Float)
+    assists_avg = Column(Float)
+    blocks_avg = Column(Float)
+    fouls_avg = Column(Float)
+    turnovers_avg = Column(Float)
+
+    def __init__(self, stats):
+        '''Load stats into object'''
+        for stat, val in stats.items():
+            setattr(self, stat, val)
+
+    def __getitem__(self, item):
+        '''Alias of getattr'''
+        return getattr(self, item)
+
+    def __setitem__(self, item, val):
+        '''Alias of setattr'''
+        return setattr(self, item, val)
+
+    def items(self):
+        '''For iteration'''
+        keys = self.sumfields + self.pctfields.keys()
+        return [(key, getattr(self, key)) for key in keys]
+
+    def __repr__(self):
+        items = ["'%s': %f" % (k, v) for k, v in self.items()]
+        return "<DerivedStats(%s)>" % ', '.join(items)
+
+
+class SquadMemberDerivedStats(DerivedStats):
+    __mapper_args__ = {'polymorphic_identity' : 'squadmember'}
+    # Note referent is one-to-one mapping to SquadMember
+
+
+class SquadDerivedStats(DerivedStats):
+    __mapper_args__ = {'polymorphic_identity' : 'squad'}
+    # NOTE referent is one-to-one mapping to Squad
     
 
 
@@ -360,15 +544,16 @@ class Squad(Base):
     team_id = Column(Integer, ForeignKey('team.id'))
     team = relationship("Team", backref=backref('squads', order_by=id))
 
+    stats_id = Column(Integer, ForeignKey('statscache.id'))
+    stats = relationship('SquadDerivedStats', backref=backref('referent',
+                                                              uselist=False,
+                                                              order_by=id))
+
     # NOTE roster = one-to-many map to SquadMembers
     # NOTE schedule = many-to-many map to Games
     # NOTE wins = one-to-many map to Games
     # NOTE losses = one-to-many map to Games
 
-    # TODO Is it worth storing stats about the whole team?
-    # Am I going to scrape stats that can't be calculated from indivual
-    # Player records and the schedule?
-    # Am I going to _use_ such stats?
     rpi = Column(Float)
     seed = Column(Integer)
     conference = Column(String)
@@ -378,6 +563,46 @@ class Squad(Base):
         self.season = season
         if team is not None:
             self.team = team
+    
+    #@reconstructor
+    def _reconstruct(self):
+        if self.stats is None:
+            self.derive_stats()
+    
+    def derive_stats(self):
+        '''Derive statistics'''
+        derived_stats = defaultdict(float)
+        
+        # Calculate sums
+        for member in self.roster:
+            member.derive_stats()
+            for stat, val in member.stats.items():
+                if val is None:
+                    # No value here. Player wasn't prolific in this area.
+                    continue
+                derived_stats[stat] += val
+    
+        # Overwrite some aggregate stats with more useful values
+        derived_stats['games_played'] = float(len(self.schedule))
+    
+        # Calculate percentages and averages        
+        for newfield, rat in DerivedStats.pctfields.items():
+            num, den = rat
+            if type(den) is str:
+                den = derived_stats[den]
+            if den == 0:
+                derived_stats[newfield] = 0
+                continue
+            derived_stats[newfield] = derived_stats[num] / den
+
+        # Store derived stats in cache
+        if self.stats is not None:
+            # Update existing record
+            for stat, val in derived_stats.items():
+                self.stats[stat] = val
+        else:
+            # Create new record
+            self.stats = SquadDerivedStats(derived_stats)
 
     def __repr__(self):
         return "<Squad('%s', '%s')>" % (self.team.name, self.season)

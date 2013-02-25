@@ -520,7 +520,6 @@ team aliases." % (entry[7]))
             
             progbar.update(message=entry[1])
             print >>stderr, ""
-            #clear_below(2, stream=stderr, return_=False)
         
             changed = False
         
