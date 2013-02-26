@@ -728,6 +728,7 @@ class TournamentGame(Game):
     def __init__(self, tournament, index):
         self.index = index
         self.tournament = tournament
+        self.accurate = None
 
     def next(self):
         next_idx = ((self.index+1) / 2) - 1
@@ -760,6 +761,12 @@ class Tournament(Base):
     rounds_store = Column(String) 
     delim = Column(String)
     season = Column(String)
+    
+    # Transient default scores for pointsmap - not saved in DB
+    # Converted to pointsmap based on round names in _reconstruct().
+    # Ordered from Championship (0th element) to 1st round (5th element).
+    # This is the default value; it's the system used by ESPN.
+    roundpoints = [320, 160, 80, 40, 20, 10]
 
     # Note: games = many-to-one relationship to Tournament.games
 
@@ -780,6 +787,7 @@ class Tournament(Base):
 
     @reconstructor
     def _reconstruct(self):
+        '''Reconstruct transient attributes from DB values'''
         if self.rounds_store is None:
             self.rounds = ['finals', 'finalfour',
                             'elite8', 'sweet16', '2nd', '1st']
@@ -792,6 +800,10 @@ class Tournament(Base):
         if self.games is None or not len(self.games):
             self.games = [TournamentGame(self, i)
                             for i in range((1<<len(self.rounds))-1)]
+
+        # Pair default round points with round labels from DB
+        self.pointsmap = dict(zip(self.rounds, self.roundpoints))
+        self.score = None
 
     def lookup(self, n):
         # Find depth in tree
@@ -919,9 +931,58 @@ class Tournament(Base):
         '''Serialize tournament'''
         raise NotImplementedError
 
-    def score(self, real_tourny):
-        '''Score this Tournament based on the real'''
-        raise NotImplementedError
+    def score(self, realtourny, pointsmap=None):
+        '''Score this Tournament based on the actual results. By default
+        uses the scoring system used by ESPN. Optionally pass a dictionary
+        mapping round labels to points for correct games in that round. Also
+        may pass a list with such values, listing points for each round in
+        order starting from the Championship and ending with the 1st round.
+        If you pass a value here, it is saved as the default for this session,
+        though it will never be persisted in the database. Returns score.
+        Score is also preserved in self.score, though it is never persisted.'''
+        if type(pointsmap) is list:
+            # Given list - pair with round labels in order, championship first.
+            pointsmap = dict(zip(self.rounds, pointsmap))
+            self.pointsmap = pointsmap
+        elif type(pointsmap) is dict:
+            # Given dictionary mapping round labels to points. Make sure there
+            # is a bijection between its keys and self.rounds. If not, raise
+            # an error.
+            for key, val in pointsmap.items():
+                if key not in self.rounds:
+                    raise NameError("Tried to map value %d \
+to unknown round %s" % (val, key))
+                else:
+                    self.pointsmap[key] = val
+        elif pointsmap is not None:
+            # Give something that isn't None, a list, or a dict
+            raise ValueError("pointsmap something other than list or dict")
+
+        # Correct Tournament
+        self.correct(realtourny)
+
+        # Score Tournament (sum everywhere TournamentGame is accurate),
+        # multiplied by the points awarded for that round.
+        self.score = 0
+        for game in self.games:
+            if game.accurate:
+                # log2 of index in heap gives round number
+                self.score += log2(game.index+1)
+
+        return self.score
+        
+    
+
+    def correct(self, realtourny):
+        '''Correct this Tournament based on actual results Tournament.
+        Sets the 'accurate' attribute on TournamentGames to True if correct,
+        False if incorrect, and None if unavailable (e.g., when the game
+        hasn't been played yet).'''
+        for i in range(len(realtourny)):
+            if realtourny[i].winner is None:
+                self[i].accurate = None
+            else:
+                self[i].accurate = realtourny[i].winner == self[i].winner
 
 
 
