@@ -823,10 +823,10 @@ class Tournament(Base):
             else:
                 tname = ""
                 if n<=2:
-                    # First two teams coincide
+                    # First two regions coincide in FinalFour
                     tname = self.delim.join(self.regions[:2])
                 else:
-                    # Second two teams coincide
+                    # Second two regions coincide in FinalFour
                     tname = self.delim.join(self.regions[-2:])
                 return (self.rounds[round_id], tname, None)
 
