@@ -1,6 +1,6 @@
 # ncaa
 
-March Madness simulation and prediction ORM and helper modules
+March Madness simulation and prediction object model and helper modules
 
 ## Description
 
