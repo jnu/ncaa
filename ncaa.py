@@ -133,7 +133,6 @@ class Game(Base):
     
     id = Column(Integer, primary_key=True)
 
-    location = Column(String)
     date = Column(Date)
     
     # Map squads playing via schedule cross-reference Table
@@ -243,11 +242,6 @@ class Player(Base):
         if height is not None: self.height = height
         if position is not None: self.position = position
         
-    @reconstructor
-    def _reconstruct(self):
-        # Implement this to calculate transient properties of object
-        pass
-    
     def __repr__(self):
         return "<Player('%s %s')>" % (self.first_name, self.last_name)
 
@@ -288,11 +282,11 @@ class SquadMember(Base):
         if year is not None:
             self.year = year
 
-    #@reconstructor
+    @reconstructor
     def _reconstruct(self):
         if self.stats is None:
             self.derive_stats()
-    
+
     def derive_stats(self):
         '''Calculate and cache derived statistics'''
         derived_stats = defaultdict(float)
@@ -564,7 +558,7 @@ class Squad(Base):
         if team is not None:
             self.team = team
     
-    #@reconstructor
+    @reconstructor
     def _reconstruct(self):
         if self.stats is None:
             self.derive_stats()
@@ -633,6 +627,56 @@ class Team(Base):
         self.name = name
         if id is not None:
             self.id = id
+    
+    @staticmethod
+    def get(name):
+        '''Convenience function for getting teams by name.'''
+        normalized_name = normalize_name(name)
+        ta = session.query(TeamAlias).filter_by(name=normalized_name).one()
+        return ta.team
+    
+    @staticmethod
+    def search(name, threshold=.9, method=fuzzymatch):
+        '''Convenience function that tries to fuzzily match the given name to
+        Teams in database. Returns a list of (unique) teams that are above a
+        certain threshold. Note that this module tries to load any one of
+        several fuzzy matching libraries in order of quality (subjective) and
+        interfaces with the first one it finds. Last choice is standard library
+        difflib, which isn't great for this task but it'll work in a pinch.
+    
+        Returns OrderedDict of IDs of Teams hwose name (any variation of it)
+        matches the provided `name` above a certain threshold. Keys are IDs,
+        values are match percentile.'''
+        normalized_name = normalize_name(name)
+
+        match_func = lambda s: method(normalized_name, s)
+
+        # Create a function for the SQL to use
+        c = session.bind.connect()
+        c.connection.create_function('distance', 1, match_func)
+
+        # Execute query
+        query = "SELECT `team_id`, distance(name) \
+                 FROM `teamalias` \
+                 WHERE distance(name)>=:threshold"
+        res = c.execute(query, dict(threshold=threshold))
+
+        if res is None:
+            return None
+
+        unique_results = OrderedDict()
+        for row in res:
+            # Compact results into ordered dict by referenced Team name and
+            # store highest score
+            if unique_results.has_key(row[0]) and \
+            unique_results[row[0]]>row[1]:
+                # Stored match is higher
+                continue
+            unique_results[row[0]] = row[1]
+
+        # Sort results and return
+        s = OrderedDict(sorted(unique_results.items(), key=lambda d: d[1]))
+        return [(session.query(Team).get(k), v) for k,v in s.items()]
 
     def __repr__(self):
         return "<Team('%s')>" % self.name
@@ -836,13 +880,15 @@ class Tournament(Base):
         for tgame in self:
             if len(tgame.opponents)!=2:
                 raise IndexError
-            r = decide(*tgame.opponents)
-            if type(r) is tuple:
+            r = decide(tgame)
+            if type(r) is Game:
+                tgame = r
+            elif type(r) is tuple or type(r) is list:
                 tgame.winner = r[0]
-                tgame.loser = r[0]
+                tgame.loser = r[1]
             else:
-                tgame.winner = r[0]
-                lid = (tgame.opponents.index(r[0])+1)%2
+                tgame.winner = r
+                lid = (tgame.opponents.index(r)+1)%2
                 tgame.loser = tgame.opponents[lid]
 
             nextroundgame = tgame.next()
@@ -871,6 +917,10 @@ class Tournament(Base):
 
     def export(self):
         '''Serialize tournament'''
+        raise NotImplementedError
+
+    def score(self, real_tourny):
+        '''Score this Tournament based on the real'''
         raise NotImplementedError
 
 
