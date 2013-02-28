@@ -629,14 +629,14 @@ class Team(Base):
             self.id = id
     
     @staticmethod
-    def get(name):
+    def get(session, name):
         '''Convenience function for getting teams by name.'''
         normalized_name = normalize_name(name)
         ta = session.query(TeamAlias).filter_by(name=normalized_name).one()
         return ta.team
     
     @staticmethod
-    def search(name, threshold=.9, method=fuzzymatch):
+    def search(session, name, threshold=.9, method=fuzzymatch):
         '''Convenience function that tries to fuzzily match the given name to
         Teams in database. Returns a list of (unique) teams that are above a
         certain threshold. Note that this module tries to load any one of
@@ -794,7 +794,7 @@ class Tournament(Base):
         else:
             self.rounds = self.rounds_store.split('|')
 
-        if not self.regions:
+        if not hasattr(self, 'regions'):
             self.regions = self.regions_store.split('|')
 
         if self.games is None or not len(self.games):
