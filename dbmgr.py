@@ -103,6 +103,48 @@ def get_float(val):
         return None
 
 
+
+def team_list_prompt(session, name, options=[]):
+    if len(options)>0:
+        # Display list of options
+        i = 1
+        for team,score in options:
+            print "%d) %s (%d%%)" % (i, team.name, int(round(score*100)))
+            i += 1
+            
+        ans = None
+        while ans is None:
+            # prompt: no or number
+            ans = raw_input("Is `%s` any of these? (number or no) " % name)
+            if (ans.lower()+"o")[:2] == 'no':
+                break
+            elif ans.isdigit():
+                ans = int(ans)
+                if ans>0 and ans<=len(options):
+                    break
+            ans = None
+
+        if type(ans) is int:
+            # selection was made. Return team.
+            return options[ans-1][0]
+
+    # If nothing worked yet, or if no options were available, prompt for
+    # making a new team
+    # No selection was made. Enter new team prompt.
+    newteam = None
+    while newteam is None:
+        newteam = raw_input("Enter team name: ")
+        try:
+            return Team.get(session, newteam)
+        except Exception as e:
+            print >>stderr, "Error:", str(e)
+            newteam = None
+            yn = raw_input("Is this a new team? (y/n) ")
+            if is_yes(yn):
+                return create_new_team_prompt(session, name)
+
+
+
 def create_new_team_prompt(session, name, yesall=None):
     # Create a new team through the use of prompts
     
@@ -318,10 +360,61 @@ id=%d: `%s`" % (int(entry[1]), old.name))
         session.commit()
         print_success("All finished.")
 
+
+
     # --------------------------------- //
     if cli.aliases:
-        # Map team names to aliases
-        raise NotImplementedError
+        # Map team names to aliases. Aliases should be in CSV,
+        # one entry per row. Standard team name does not have to be in first
+        # cell, or even be present at all. Uses fuzzy matching if there is
+        # no exact match of any team.
+        reader = csv.reader(cli.aliases)
+        print_info("Adding team aliases to database ...")
+
+        # NOTE: no header.
+        for line in reader:
+            print_comment("Looking at line beginning `%s` ... " % line[0])
+            # For each entry in the CSV
+            # find the Team to which this line is referring
+            refteam = None
+            bestmatches = []
+            for cell in line:
+                bestmatches.extend(Team.search(session, cell))
+
+            # Sort bestmatches high to low
+            bestmatches = sorted(bestmatches, key=lambda d: d[1])
+            bestmatches.reverse()
+
+            if len(bestmatches)>0 and bestmatches[0][1] == 1:
+                # If perfect match, select team
+                refteam = bestmatches[0][0]
+            else:
+                # If imperfect match (or no matches), display options
+                refteam = team_list_prompt(session, line[0], bestmatches)
+
+            for cell in line:
+                # Add (new) aliases to DB
+                try:
+                    # Try to find Alias in DB
+                    normalias = normalize_name(cell)
+                    session.query(TeamAlias).filter_by(name=normalias).one()
+                    print_comment("Alias `%s` already present for `%s`" \
+                                    % (cell, refteam.name))
+                except:
+                    # This means alias isn't in DB; add it
+                    newteamalias = TeamAlias(cell)
+                    newteamalias.team = refteam
+                    print_good("Aliased team `%s` as `%s`" % (refteam.name,
+                                                                cell))
+            session.commit()
+            print_info("Saved progress.")
+            
+        # Finished.
+        session.commit()
+        print_success("Finished aliasing!")
+    
+
+
 
     # --------------------------------- //
     if cli.players:
