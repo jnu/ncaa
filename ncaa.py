@@ -75,6 +75,8 @@ import re
 import datetime
 import operator
 from collections import OrderedDict, defaultdict
+from random import randint, seed
+seed(datetime.datetime.now())
 
 
 # Try to load fuzzy text matching libraries, in order of (my) preference
@@ -598,6 +600,14 @@ class Squad(Base):
             # Create new record
             self.stats = SquadDerivedStats(derived_stats)
 
+    @staticmethod
+    def get(session, name, season):
+        '''Get Squad in Season in DB (session) using a more forigiving
+        search (through TeamAliases)'''
+        tid = Team.get(session, name).id
+        return session.query(Squad).filter(Squad.team_id==tid,
+                                           Squad.season==season).one()
+
     def __repr__(self):
         return "<Squad('%s', '%s')>" % (self.team.name, self.season)
 
@@ -729,6 +739,7 @@ class TournamentGame(Game):
         self.index = index
         self.tournament = tournament
         self.accurate = None
+        self.postseason = True
 
     def next(self):
         next_idx = ((self.index+1) / 2) - 1
@@ -803,7 +814,7 @@ class Tournament(Base):
 
         # Pair default round points with round labels from DB
         self.pointsmap = dict(zip(self.rounds, self.roundpoints))
-        self.score = None
+        self.points = None
 
     def lookup(self, n):
         # Find depth in tree
@@ -926,6 +937,24 @@ class Tournament(Base):
 
     def __repr__(self):
         return "<Tournament('%s')>" % self.season
+    
+    def empty_bracket(self, name=None):
+        '''Return a clone of this Tournament that has not been filled out,
+        except for the first round. Designate its moniker.'''
+        if name is None:
+            name = "%s-empty-%d" % (self.season, randint(0,1000000))
+        
+        newtourny = Tournament(name, rounds=self.rounds, regions=self.regions,
+                               delim='/')
+        # Get index - start of first round
+        fr_start = self.index('1st')
+        # Iterate to end of Tournament, copy TournamentGame opponents
+        for i in range(fr_start, len(self)):
+            newtourny[i].opponents = [t for t in self[i].opponents]
+    
+        # Return new Tournament
+        return newtourny
+        
 
     def export(self):
         '''Serialize tournament'''
@@ -963,13 +992,14 @@ to unknown round %s" % (val, key))
 
         # Score Tournament (sum everywhere TournamentGame is accurate),
         # multiplied by the points awarded for that round.
-        self.score = 0
+        self.points = 0
         for game in self.games:
             if game.accurate:
                 # log2 of index in heap gives round number
-                self.score += log2(game.index+1)
+                roundlbl = self.rounds[log2(game.index+1)]
+                self.points += self.pointsmap[roundlbl]
 
-        return self.score
+        return self.points
         
     
 
