@@ -72,6 +72,7 @@ from sqlalchemy.orm import relationship, backref, sessionmaker, reconstructor
 from sqlalchemy.ext.declarative import declarative_base
 # Standard Library
 import re
+import json
 import datetime
 import operator
 from collections import OrderedDict, defaultdict
@@ -956,9 +957,106 @@ class Tournament(Base):
         return newtourny
         
 
-    def export(self):
-        '''Serialize tournament'''
-        raise NotImplementedError
+    def export(self, format='heap'):
+        '''Serialize tournament. Supports to methods of serialization. First
+        is essentially a copy of the heap. Second is a nested tree. By default
+        outputs heap.'''
+        formats = ['heap', 'nested']
+        format = format.lower()
+        if format not in formats:
+            raise NotImplementedError("Format %s not implemented." % format)
+        
+        # Create object wrapper for output
+        output = {
+            'regions' : self.regions,
+            'rounds' : self.rounds,
+            'season' : self.season,
+            'nodes' : []
+        }
+        
+        def _createNode(id_, squad, score, children=None):
+            # Used to specify consistent structure of nodes.
+            node = {
+                'id' : id_,
+                'name' : squad.team.name,
+                'data' : {
+                    'sid' : squad.id,
+                    'seed' : squad.seed,
+                    'points' : score
+                },
+            }
+            if children is not None:
+                node['children'] = children
+            return node
+        
+        ## Output algorithms
+        
+        if format=='heap':
+            # Default format: Heap-list with some extra info. JSON.
+            # Nodes are WINNERS (or opponents) of each game, not whole games
+            heap = []
+            for i in range(len(self)):
+                # Iterate through games and store winners / scores / seeds
+                # in heap
+                heap.append(_createNode(i, self[i].winner,
+                                        self[i].winner_score))
+
+            first_round_id = log2(len(self))-1
+            for i in range(first_round_id, len(self)):
+                # Iterate through 1st round games and add opponents (and their
+                # scores and stuff) to heap. Order by seed.
+                ops = sorted(self[i].opponents,
+                             key=lambda a: a.seed,
+                             reverse=True);
+                scores = [self[i].winner_score, self[i].loser_score]
+                if ops[1] is self[i].winner:
+                    # Make sure scores associate correctly with winner/loser
+                    scores.reverse();
+                for x in [0,1]:
+                    heap.append(_createNode((i<<1)+1+x, ops[x], scores[x]))
+            
+            # Set nodes attribute of output structure
+            output['nodes'] = heap
+            
+        ###
+        
+        elif format=='nested':
+            # Javascript Infovis Toolkit (JSON)
+            # Root at Champion.
+
+            def _maketree(n=0, prev=None):
+                # Build tree recursively
+                currentsquad = None
+                children = []
+                score = None
+                
+                if n >= len(self):
+                    # Leaf node - order by Seed. Use higher one when n is odd.
+                    ops = sorted(self[prev].opponents,
+                                 key=lambda a: a.seed, reverse=True)
+                    currentsquad = ops[n%2]
+                else:
+                    # Intermediate node (winner of game at self[n])
+                    currentsquad = self[n].winner
+                    children = [_maketree(2*n+1, n),
+                                _maketree(2*n+2, n)]
+            
+                if prev is not None:
+                    # Get points scored in game
+                    if currentsquad is self[prev].winner:
+                        score = self[prev].winner_score
+                    elif currentsquad is self[prev].loser:
+                        score = self[prev].loser_score
+                    
+                # Construct node and return
+                return _createNode(n, currentsquad, score, children)
+            
+            # Create the structure, store in output object
+            output['nodes'] = _maketree()
+            ###
+            
+        # Serialize output
+        return json.dumps(output)
 
     def score(self, realtourny, pointsmap=None):
         '''Score this Tournament based on the actual results. By default
