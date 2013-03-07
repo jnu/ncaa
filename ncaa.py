@@ -199,6 +199,19 @@ class Game(Base):
                 else:
                     # Home team was loser
                     self.winner = home_team
+
+    @staticmethod
+    def get_games_with_data(session, limit=None):
+        '''Query the database only for Games that have stats for both
+        teams.'''
+        q1 = session.query(Game)\
+                    .join(Game.opponents)\
+                    .filter(Game.opponents.any(Squad.roster==None))
+        q2 = session.query(Game).except_(q1)
+        if limit is not None:
+            q2 = q2.limit(limit)
+        return q2.all()
+        
     
     def __repr__(self):
         teams = "%s vs. %s" % (self.opponents[0].team.name,
