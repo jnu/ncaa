@@ -113,8 +113,8 @@ Base = declarative_base()
 '''Schedule is the cross-reference table for establishing the many-to-many
 map from Squads to Games.'''
 schedule = Table('schedule', Base.metadata,
-    Column('game_id', Integer, ForeignKey('game.id')),
-    Column('squad_id', Integer, ForeignKey('squad.id')),
+    Column('game_id', Integer, ForeignKey('game.id', onupdate='cascade')),
+    Column('squad_id', Integer, ForeignKey('squad.id', onupdate='cascade')),
     Column('type', Enum('home', 'away'))
 )
     
@@ -143,12 +143,12 @@ class Game(Base):
                              secondary=schedule,
                              backref=backref('schedule', order_by=date))
 
-    winner_id = Column(Integer, ForeignKey('squad.id'))
+    winner_id = Column(Integer, ForeignKey('squad.id', onupdate='cascade'))
     winner = relationship('Squad', foreign_keys=[winner_id],
                           backref=backref('wins', order_by=date))
     winner_score = Column(Integer)
 
-    loser_id = Column(Integer, ForeignKey('squad.id'))
+    loser_id = Column(Integer, ForeignKey('squad.id', onupdate='cascade'))
     loser = relationship('Squad', foreign_keys=[loser_id],
                          backref=backref('losses', order_by=date))
     loser_score = Column(Integer)
@@ -208,6 +208,7 @@ class Game(Base):
         q1 = session.query(Game)\
                     .join(Game.opponents)\
                     .filter(Game.opponents.any(Squad.roster==None))
+        
         q2 = session.query(Game).except_(q1)
         
         if random:
@@ -278,13 +279,13 @@ class SquadMember(Base):
 
     id = Column(Integer, primary_key=True)
     
-    player_id = Column(Integer, ForeignKey('player.id'))
+    player_id = Column(Integer, ForeignKey('player.id', onupdate='cascade'))
     player = relationship('Player', backref=backref('career', order_by=id))
 
-    squad_id = Column(Integer, ForeignKey('squad.id'))
+    squad_id = Column(Integer, ForeignKey('squad.id', onupdate='cascade'))
     squad = relationship('Squad', backref=backref('roster', order_by=id))
     
-    stats_id = Column(Integer, ForeignKey('statscache.id'))
+    stats_id = Column(Integer, ForeignKey('statscache.id', onupdate='cascade'))
     stats = relationship('SquadMemberDerivedStats', backref=backref('referent',
                                                                uselist=False,
                                                                order_by=id))
@@ -365,11 +366,12 @@ class PlayerStatSheet(Base):
 
     id = Column(Integer, primary_key=True)
 
-    squadmember_id = Column(Integer, ForeignKey('squadmember.id'))
+    squadmember_id = Column(Integer, ForeignKey('squadmember.id',
+                                                onupdate='cascade'))
     squadmember = relationship('SquadMember',
                                backref=backref('statsheets', order_by=id))
 
-    game_id = Column(Integer, ForeignKey('game.id'))
+    game_id = Column(Integer, ForeignKey('game.id', onupdate='cascade'))
     game = relationship('Game', backref=backref('boxscore', order_by=id))
 
     # Individual Game Statistics
@@ -557,10 +559,10 @@ class Squad(Base):
     id = Column(Integer, primary_key=True)
     season = Column(String, nullable=False)
 
-    team_id = Column(Integer, ForeignKey('team.id'))
+    team_id = Column(Integer, ForeignKey('team.id', onupdate='cascade'))
     team = relationship("Team", backref=backref('squads', order_by=id))
 
-    stats_id = Column(Integer, ForeignKey('statscache.id'))
+    stats_id = Column(Integer, ForeignKey('statscache.id', onupdate='cascade'))
     stats = relationship('SquadDerivedStats', backref=backref('referent',
                                                               uselist=False,
                                                               order_by=id))
@@ -730,7 +732,7 @@ class TeamAlias(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
 
-    team_id = Column(Integer, ForeignKey('team.id'))
+    team_id = Column(Integer, ForeignKey('team.id', onupdate='cascade'))
     team = relationship("Team", backref=backref('aliases', order_by=id))
 
     def __init__(self, name):
@@ -751,7 +753,8 @@ class TournamentGame(Game):
     
     index = Column(Integer)
 
-    tournament_id = Column(Integer, ForeignKey('tournament.id'))
+    tournament_id = Column(Integer, ForeignKey('tournament.id',
+                                               onupdate='cascade'))
     tournament = relationship('Tournament',
                               backref=backref('games', order_by=index))
         
