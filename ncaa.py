@@ -201,15 +201,21 @@ class Game(Base):
                     self.winner = home_team
 
     @staticmethod
-    def get_games_with_data(session, limit=None):
+    def get_games_with_data(session, limit=None, random=True):
         '''Query the database only for Games that have stats for both
-        teams.'''
+        teams. Optionally specify whether random sample should be obtained
+        (by default, yes) and how many Games to return (by default, all).'''
         q1 = session.query(Game)\
                     .join(Game.opponents)\
                     .filter(Game.opponents.any(Squad.roster==None))
         q2 = session.query(Game).except_(q1)
+        
+        if random:
+            q2 = q2.order_by(func.random())
+        
         if limit is not None:
             q2 = q2.limit(limit)
+        
         return q2.all()
         
     
