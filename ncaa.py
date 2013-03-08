@@ -169,7 +169,7 @@ class Game(Base):
         # Tournament) the concept of home vs. away teams is essentially
         # meaningless, so this isn't actually that important. Specify loser
         # and winner optionally; if one is missing, the other will be inferred.
-        # Future games' winners and losers don't have to sbe specified at all.
+        # Future games' winners and losers don't have to be specified at all.
         self.opponents.append(first_team)
         self.opponents.append(second_team)
         self.date = date
@@ -205,11 +205,15 @@ class Game(Base):
         '''Query the database only for Games that have stats for both
         teams. Optionally specify whether random sample should be obtained
         (by default, yes) and how many Games to return (by default, all).'''
-        q1 = session.query(Game)\
-                    .join(Game.opponents)\
-                    .filter(Game.opponents.any(Squad.roster==None))
+        q_incomplete = session.query(Game)\
+                              .join(Game.opponents)\
+                              .filter(Game.opponents.any(Squad.roster==None))
+        q_tournament = session.query(Game).filter(Game.postseason==True)
+        q_nowinner = session.query(Game).filter(Game.winner==None)
         
-        q2 = session.query(Game).except_(q1)
+        q2 = session.query(Game).except_(q_incomplete,
+                                         q_tournament,
+                                         q_nowinner)
         
         if random:
             q2 = q2.order_by(func.random())
