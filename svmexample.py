@@ -17,6 +17,51 @@ from nltk.classify.scikitlearn import SklearnClassifier
 
 
 
+class Decider(object):
+    def __init__(self, c, maxes=None):
+        self.classifier = c
+        self.maxes = maxes
+
+    def __call__(self, game):
+        ft = extract_features(*game.opponents)
+        if self.maxes is not None:
+            ft = normalize_features(ft, self.maxes)
+        p = self.classifier.prob_classify(ft)
+        return int(p.max())
+
+
+
+class ODDecider(object):
+    def __init__(self, a, b, maxes, aprob=.5, bprob=.5):
+        self.classifier_a = a
+        self.classifier_b = b
+        self.maxes = maxes
+        self.acc_a = aprob
+        self.acc_b = bprob
+
+    def __call__(self, game):
+        opponents = [squad for squad in game.opponents]
+        
+        ft_a = normalize_features(extract_features(*opponents), self.maxes)
+        opponents.reverse()
+        ft_b = normalize_features(extract_features(*opponents), self.maxes)
+
+        pa = self.classifier_a.prob_classify(ft_a)
+        pb = self.classifier_b.prob_classify(ft_b)
+
+
+        m = [(0, pa.prob('0') * self.acc_a + pb.prob('0') * self.acc_b),
+             (1, pa.prob('1') * self.acc_b + pb.prob('1') * self.acc_b)]
+
+        w = max(m, key=lambda x: x[1])[0]
+
+        return w
+
+
+
+
+
+
 def split_sample(sample, rat=.75):
      '''Splits a sample set into a test and train set with the given ratio'''
      s = int(round(len(sample)*rat))
@@ -42,6 +87,11 @@ def extract_features(squad1, squad2):
 
 
 
+def normalize_features(fm, maxes):
+    '''Scale feature map according maxes'''
+    return dict([(k, v/float(maxes[k]),) for k,v in fm.items()])
+
+
 if __name__=='__main__':
     '''Run a demo that trains two classifiers on a random sample of games from
     the database. The first classifier uses the 1st Squad's offense against
@@ -59,9 +109,14 @@ if __name__=='__main__':
     # of the squads do not have stats available at this time.)
     print_info("Creating sample from games in DB")
     
-    some_games = Game.get_games_with_data(session, limit=60)
+    some_games = Game.get_games_with_data(session, limit=100)
 
     sample_a, sample_b = [], []
+    
+    # Store maximum feature values across all samples. This will be determined
+    # when feature values are calculated
+    maxes = extract_features(*some_games[0].opponents)
+    
     
     i=1
     for game in some_games:
@@ -69,15 +124,30 @@ if __name__=='__main__':
         print_comment("Calculating stats for squads in game %d ... " % i)
         i+=1
         
-        opponents = game.opponents
+        opponents = [squad for squad in game.opponents]
         winner = opponents.index(game.winner)
     
         # Make one sample with Squad 1's offense and Squad 2's defense
-        sample_a.append((extract_features(*opponents), str(winner),))
+        ft_a = extract_features(*opponents)
+        for k,v in ft_a.items():
+            if v>maxes[k]: maxes[k]=v
+        
+        sample_a.append((ft_a, str(winner),))
 
         # Make another sample with Squad 2's offense and Squad 1's offense
         opponents.reverse()
-        sample_b.append((extract_features(*opponents), str(winner),))
+        ft_b = extract_features(*opponents)
+        for k,v in ft_b.items():
+            if v>maxes[k]: maxes[k]=v
+        sample_b.append((ft_b, str(winner),))
+
+    # Normalize features
+    print_info("Normalizing feature sets ... ")
+    for i in range(len(sample_b)):
+        sample_a[i] = (normalize_features(sample_a[i][0], maxes),
+                       sample_a[i][1])
+        sample_b[i] = (normalize_features(sample_b[i][0], maxes),
+                       sample_b[i][1])
 
     print_good("Commiting calculated stats to db")
     session.commit()
@@ -101,8 +171,10 @@ if __name__=='__main__':
     # Test the accuracy of the model
     print_info("Testing model accuracy ... ")
     print_comment("Overall classification accuracy")
-    print_comment("A = %s" % nltk.classify.accuracy(classifier_a, test_set_a))
-    print_comment("B = %s" % nltk.classify.accuracy(classifier_b, test_set_b))
+    acc_a = nltk.classify.accuracy(classifier_a, test_set_a)
+    acc_b = nltk.classify.accuracy(classifier_b, test_set_b)
+    print_comment("A = %s" % acc_a)
+    print_comment("B = %s" % acc_b)
 
 
     print_info("Testing combined accuracy ...")
@@ -113,8 +185,8 @@ if __name__=='__main__':
         b = classifier_b.prob_classify(test_set_b[i][0])
 
         # Create a dictionary of labels vs. probabilities
-        m = [(0, a.prob('0')), (1, a.prob('1')),
-             (0, b.prob('0')), (1, b.prob('1'))]
+        m = [(0, a.prob('0') * acc_a + b.prob('0') * acc_b),
+             (1, a.prob('1') * acc_b + b.prob('1') * acc_b)]
         
         # Select label with maximum probability
         winner = max(m, key=lambda x: x[1])
@@ -125,10 +197,11 @@ if __name__=='__main__':
                            some_games[i].opponents[1].team.name,
                            some_games[i].opponents[winner[0]].team.name,
                            int(100 * winner[1])))
-        print_comment("    - A: %d (%f), %d (%f)" \
-                        % (m[0][0], m[0][1], m[1][0], m[1][1]))
-        print_comment("    - B: %d (%f), %d (%f)" \
-                        % (m[2][0], m[2][1], m[3][0], m[3][1]))
+        
+        print_comment("    - A wins: %f" \
+                        % (m[0][1]))
+        print_comment("    - B wins: %f" \
+                        % (m[1][1]))
         
         # Evaluate prediction
         if str(winner[0]) == str(test_set_a[i][1]):
@@ -139,4 +212,24 @@ if __name__=='__main__':
 
     print_info("Model was correct in %d out of %d cases (%f)" \
                 % (c, len(test_set_a), c/float(len(test_set_a))))
+
+    # Create decision function (here, it's a callable class instance)
+    decider = ODDecider(classifier_a, classifier_b, maxes, acc_a, acc_b)
+
+    # Simulate tournament
+    print_info("Simulating 2011-12 tournament with combined model ... ")
+    t = session.query(Tournament).filter_by(season="2011-12").one()
+    bracket = t.empty_bracket()
+
+    bracket.simulate(decider)
+
+    print_info("Evaluating simulation ... ")
+    s = bracket.score(t)
+    print_comment("Scored: %d / 1920" % s)
+
+    print_info("Simulating 2011-12 tournament with single model ...")
+    bracket2 = t.empty_bracket()
+    bracket2.simulate(Decider(classifier_a, maxes))
+    s2 = bracket2.score(t)
+    print_comment("Scored %d / 1920" % s2)
 
