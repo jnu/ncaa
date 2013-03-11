@@ -96,6 +96,16 @@ except ImportError:
         from difflib import SequenceMatcher
         fuzzymatch = lambda a,b: SequenceMatcher(None, a,b).ratio()
 
+# Optional 3rd-party libraries
+try:
+    import numpy as np
+except ImportError:
+    # There's some type checking that involves numpy, so just fudge it
+    # if numpy is not available
+    class NPFake(object):
+        pass
+    np = NPFake()
+    np.ndarray = type(list)
 
 
 
@@ -927,6 +937,10 @@ class Tournament(Base):
         self.games[n] = data
 
     def simulate(self, decide):
+        '''Simulate tournament with given decision function. Decision fn must
+        return either Game (with 'winner' attribute filled out), a tuple of
+        Squads in the form [winner, loser], the Squad that won, or the index
+        in Game.opponents of the given Game of the winner.'''
         for tgame in self:
             if len(tgame.opponents)!=2:
                 raise IndexError
@@ -936,10 +950,20 @@ class Tournament(Base):
             elif type(r) is tuple or type(r) is list:
                 tgame.winner = r[0]
                 tgame.loser = r[1]
-            else:
+            elif type(r) is Squad:
                 tgame.winner = r
                 lid = (tgame.opponents.index(r)+1)%2
                 tgame.loser = tgame.opponents[lid]
+            elif type(r) is int:
+                tgame.winner = tgame.opponents[r]
+                tgame.loser = tgame.opponents[(r+1)%2]
+            elif type(r) is np.ndarray or type(r) is list:
+                i = int(r[0])
+                tgame.winner = tgame.opponents[i]
+                tgame.loser = tgame.opponents[(i+1)%2]
+            else:
+                raise NotImplementedError("Unsupported return type %s"\
+                                            % type(r))
 
             nextroundgame = tgame.next()
             
