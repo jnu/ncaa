@@ -635,6 +635,87 @@ class Squad(Base):
         else:
             # Create new record
             self.stats = SquadDerivedStats(derived_stats)
+    
+    def win_pct(self, weighted=False):
+        '''Calculate win percentage. Weighted win pct multiplies home wins
+        by .6, home losses by 1.4, away wins by 1.4 and away losses by .6.'''
+        w = float(len(self.wins))
+        l = float(len(self.losses))
+        
+        if weighted:
+            away_win_weight = home_loss_weight = 1.4
+            away_loss_weight = home_win_weight = .6
+            away_wins = home_wins = 0.
+            away_losses = home_losses = 0.
+            neutral_wins = neutral_losses = 0.
+        
+            name = self.team.name
+        
+            for game in self.schedule:
+                if game.winner is None:
+                    continue
+                op = [s for s in game.opponents if s is not self][0]
+                opname = op.team.name
+                
+                if game.arena==opname:
+                    # Away game
+                    if game.winner is self:
+                        away_wins += 1.
+                    else:
+                        away_losses += 1.
+                elif game.arena==name:
+                    # Home game
+                    if game.winner is self:
+                        home_wins += 1.
+                    else:
+                        home_losses += 1.
+                else:
+                    # Neutral game
+                    if game.winner is self:
+                        neutral_wins += 1.
+                    else:
+                        neutral_losses += 1.
+            
+            # Weight wins and losses. 1.4 and .6 is what the NCAA uses.
+            w = away_wins * away_win_weight \
+                + home_wins * home_win_weight \
+                + neutral_wins
+            l = away_losses * away_loss_weight \
+                + home_losses * home_loss_weight \
+                + neutral_losses
+        
+        return w / (w+l)
+    
+    def opponents(self, played=True):
+        '''Get opponents. If played is True, only get opponents in games that
+        have been played so far. Otherwise get all of them.'''
+        sched = self.schedule
+        if played:
+            sched = self.wins + self.losses
+        return [op for op in sum([gm.opponents for gm in sched], [])
+                if op is not self]
+    
+    def _owp(self):
+        '''Opponents winning percentage'''
+        w = sum([len(op.wins) for op in self.opponents()], 0.)
+        l = sum([len(op.losses) for op in self.opponents()], 0.)
+        return w / (w+l)
+
+    def _oowp(self):
+        '''Opponents' opponents' winning percentage'''
+        oops = sum([op.opponents() for op in self.opponents()], [])
+        w = sum([len(oop.wins) for oop in oops], 0.)
+        l = sum([len(oop.losses) for oop in oops], 0.)
+        return w / (w+l)
+    
+    def get_rpi(self):
+        '''Calculate RPI.'''
+        wp = self.win_pct(weighted=True)
+        opponents = self.opponents()
+        owp = self._owp()
+        oowp = self._oowp()
+        self.rpi = .25*wp + .5*owp + .25*oowp
+        return self.rpi
 
     @staticmethod
     def get(session, name, season):
