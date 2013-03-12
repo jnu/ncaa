@@ -52,8 +52,8 @@ elif not er:
         ret['stats'] = dict(e.stats.items())
         ret['stats']['rpi'] = e.rpi
         ret['stats']['wwp'] = e.win_pct(weighted=True)
-        ret['wins'] = len(e.wins)
-        ret['losses'] = len(e.losses)
+        ret['stats']['wins'] = len(e.wins)
+        ret['stats']['losses'] = len(e.losses)
 
     else:
         # Nothing else supported so far
