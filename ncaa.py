@@ -870,8 +870,13 @@ class TournamentGame(Game):
 
     def __repr__(self):
         round, region, n = self.tournament.lookup(self.index)
-        return "<TournamentGame('%s', '%s', '%s', '%s')>" \
-                % (self.tournament.season, round, region, n)
+        op1, op2 = None, None
+        
+        if len(self.opponents)==2:
+            op1, op2 = [op.team.name for op in self.opponents]
+        
+        return "<TournamentGame('%s', '%s', '%s', '%s', '%s vs. %s')>" \
+                % (self.tournament.season, round, region, n, op1, op2)
 
 
 
