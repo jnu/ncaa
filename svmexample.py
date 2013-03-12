@@ -12,6 +12,7 @@ from ncaa import *
 from output import *
 from sklearn.svm import SVC
 from sklearn.grid_search import GridSearchCV
+from sklearn.preprocessing import StandardScaler
 from cmath import sqrt
 from collections import defaultdict, OrderedDict
 import numpy as np
@@ -188,8 +189,11 @@ class DataSet(object):
         self.train, self.test = [self.convert(v) for v
                                                  in self._split_data(data)]
         self.normalize = normalizer(self.train)
-        self.train = self.normalize(self.train)
-        self.test = self.normalize(self.test)
+        #self.normalizer = StandardScaler()
+        #self.normalize = StandardScaler().fit_transform
+        self.data = (self.normalize(self.data[0]), self.data[1],)
+        #self.train = self.normalize(self.train)
+        #self.test = self.normalize(self.test)
     
     def _split_data(self, data):
      '''Splits a sample set into a test and train set with the given ratio'''
@@ -231,16 +235,44 @@ def extract_features(squad1, squad2):
     '''What to give to SVM for classification? This example gives some
     offensive statistics from the first squad and some defensive stats from
     the second squad.'''
-    return {
+    if squad1.rpi is None: squad1.get_rpi()
+    if squad2.rpi is None: squad2.get_rpi()
+    
+    '''
+    if squad2.rpi > squad1.rpi:
+        # Order by RPI, greatest to least
+        st = squad1
+        squad1 = squad2
+        squad2 = st
+    '''
+    
+    r = {
         'fga' : squad1.stats.field_goal_avg,
+        'fgb'  : squad2.stats.field_goal_avg,
+        'rpia' : squad1.rpi,
+        'rpib' : squad2.rpi,
         'reba' : squad1.stats.rebounds_avg,
         'rebb' : squad2.stats.rebounds_avg,
         'assa' : squad1.stats.assists_avg,
-        'ppma' : squad1.stats.ppm,
+        'assb' : squad2.stats.assists_avg,
         'stlsa' : squad1.stats.steals_avg,
+        'stlsb' : squad2.stats.steals_avg,
         'toa' : squad1.stats.turnovers_avg,
+        'tob' : squad2.stats.turnovers_avg,
+        'blksa' : squad1.stats.blocks_avg,
         'blksb' : squad2.stats.blocks_avg,
-        'ptsa' : squad1.stats.points_avg
+        'ptsa' : squad1.stats.points_avg,
+        'ptsb' : squad2.stats.points_avg,
+    }
+    return {
+        'fg' : r['fga'] - r['fgb'],
+        'rpi': r['rpia'] - r['rpib'],
+        'reb': r['reba'] - r['rebb'],
+        'ass': r['assa'] - r['assb'],
+        'stl': r['stlsa'] - r['stlsb'],
+        'to' : r['toa'] - r['tob'],
+        'blk': r['blksa'] - r['blksb'],
+        'pts': r['ptsa'] - r['ptsb'],
     }
 
 
@@ -263,7 +295,7 @@ if __name__=='__main__':
     # of the squads do not have stats available at this time.)
     print_info("Creating sample from games in DB")
     
-    some_games = Game.get_games_with_data(session, limit=200)
+    some_games = Game.get_games_with_data(session, limit=400)
 
     sample_a, sample_b = [], []
     
@@ -298,35 +330,86 @@ if __name__=='__main__':
 
     print_info("Constructing grid for optimizing hyperparameters ...")
     # Create Grid to search
-    grid = {
-        'kernel' : ('rbf', 'linear', 'sigmoid',),
-        'C'      : [2**i for i in range(-15, 15)],
-        'gamma'  : [2**i for i in range(-15, 15)],
-    }
+    grid = [
+        {
+            'kernel' : ['rbf'],
+            'C'      : [2**i for i in np.arange(-5., 15., 1.)],
+            'gamma'  : [2**i for i in np.arange(-15., 3., 1.)],
+        },
+        {
+            'kernel' : ['poly'],
+            'C'      : [2**i for i in np.arange(-5., 3., .5)],
+            'degree' : [2,3],
+        }
+    ]
 
     classifier_a = GridSearchCV(SVC(probability=True), grid,
-                                verbose=3, refit=True, cv=10, n_jobs=4)
-    classifier_b = GridSearchCV(SVC(probability=True), grid,
-                                verbose=3, refit=True, cv=10, n_jobs=4)
+                                verbose=3, refit=True, cv=5, n_jobs=4)
+    #classifier_b = GridSearchCV(SVC(probability=True), grid,
+    #                            verbose=3, refit=True, cv=10, n_jobs=4)
 
     print_info("Searching for optimal classifier ...")
     # Train the classifier
     classifier_a.fit(*data_a.data)
-    classifier_b.fit(*data_b.data)
+    #classifier_b.fit(*data_b.data)
     
 
     # Score the classifier
     print_comment("Classifier A accuracy: %.3f" % classifier_a.best_score_)
-    print_comment("Classifier B accuracy: %.3f" % classifier_b.best_score_)
+    #print_comment("Classifier B accuracy: %.3f" % classifier_b.best_score_)
 
 
-    t = session.query(Tournament).filter_by(season="2011-12").one()
+    # Create decision function from classifier
+    decider = Decider(classifier_a,
+                      lambda *g: data_a.convert(extract_features(*g)),
+                      data_a.normalize)
 
-    print_info("Simulating 2011-12 tournament with first model ...")
-    bracket = t.empty_bracket()
-    bracket.simulate(Decider(classifier_a,
-                              lambda *g: data_a.convert(extract_features(*g)),
-                              data_a.normalize))
-    s2 = bracket.score(t)
-    print_comment("Scored %d / 1920" % s2)
+    # Pull tournaments from the database to test real-world model performance
 
+    tourny_years = ['2009-10', '2010-11', '2011-12']
+    simdata = dict()
+
+
+    for season in tourny_years:
+        print_info("Simulating %s tournament ... " % season)
+        
+        # Simulate tournament in given season
+        t = session.query(Tournament).filter_by(season=season).one()
+        b = t.empty_bracket()
+        b.simulate(decider)
+        s = b.score(t)
+        
+        # Calculate what model got right in specific rounds
+        ff_right = len(set(t[1].opponents + t[2].opponents)\
+                     & set(b[1].opponents + b[2].opponents))
+        cr_right = len(set(t[0].opponents) & set(b[0].opponents))
+        c_right = t[0].winner == b[0].winner
+
+        # Print semi-detailed simulation results
+        print_comment(" * Scored %d out of 1920" % s)
+        print_comment("   - Picked %d Final Four teams" % ff_right)
+        print_comment("   - Picked %d Championship teams" % c_right)
+        
+        if c_right:
+            print_comment("   - Correctly picked %s as champion." \
+                                % t[0].winner.team.name)
+        else:
+            print_comment("   - Incorrectly picked %s as champion, not %s" \
+                                % (b[0].winner.team.name,
+                                   t[0].winner.team.name))
+
+        # Store data in variable simdata, for interactive mode
+        simdata[season] = {
+            't' : t,
+            'b' : b,
+            's' : s,
+        }
+
+
+    # Simulation might have had side-effects (calculating RPI), so save
+    # any updated info to DB. (Not required, but will save calculating
+    # time in the future.)
+    print_good("Saving derived stats to DB")
+    session.commit()
+
+    print_success("Demo finished successfully.")
