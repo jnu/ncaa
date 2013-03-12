@@ -18,3 +18,16 @@ body {
 	font-weight: 500;
 	text-decoration: line-through;
 }
+
+
+table#stats {
+	width: 100%;
+}
+
+tbody>tr>th {
+	text-align: left;
+}
+
+td.val {
+	text-align: right;
+}
