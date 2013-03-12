@@ -28,6 +28,8 @@ function Bracket(params) {
 		lostGameColor	   : 'rgb(249, 115, 115)',
 		lostGameHoverColor : 'rgb(162, 37, 37)',
 		nodeStroke	       : 'rgb(255, 86, 0)',
+		textCorrectCls	   : 'game-correct',
+		textIncorrectCls   : 'game-incorrect',
 		nodeStrokeWidth    : 1,
 		nodeHoverScale     : {x: 1.1, y: 1.2},
 		pathType	       : 'smooth',			// No other options are supported yet.
@@ -58,12 +60,14 @@ function Bracket(params) {
 		/// --- Containers and stuff. Don't customize. --- ///
 		
 		zoomAnimation      : null,
-		paper     	       : {},
+		paper     	       : null,
 		bg        	       : {},
 		data		       : {},
 		navButtons   	   : [],
 		nodes		       : [],
 		regions			   : [],
+		titleLbl		   : null,
+		titleYOffsetRat    : .04,
 		season			   : '',
 		popup			   : null,
 		rounds		       : 0,
@@ -76,6 +80,12 @@ function Bracket(params) {
 		state			   : {
 			region : -1,
 		},
+		correctedBracket   : null,
+		baseURL            : 'http://joenoodles.com/widgets/ncaa/', 
+		scores             : [320, 160, 80, 40, 20, 10],
+		score			   : null,
+		scoreLbl		   : null,
+		scoreLblYPad	   : 10,
 		//
 		//
 		//
@@ -104,6 +114,34 @@ function Bracket(params) {
 			this.bg.attr('stroke', this.bgStroke);
 			this.bg.attr('opacity', this.bgOpacity);
 			
+			// Make title
+			that.titleLbl = that.paper.text(that.width/2, that.height*that.titleYOffsetRat, data.season||"")
+									  .attr('text-anchor', 'middle')
+									  .attr('font-size', "14px");
+			
+			if(data.correctedAgainst) {
+				// Fetch bracket to use in correction, if specified. Valid formats are bracket name, bracket id
+				// and bracket itself (in JSON)
+				/// Add notice to page
+				var titBox = that.titleLbl.getBBox();
+				that.scoreLbl = that.paper.text(that.titleLbl.attr('x'), titBox.y2+that.scoreLblYPad, "Scoring ...")
+										  .attr('text-anchor', 'middle');
+				
+				function _loadAndCorrectBracket(data) {
+					that.correctedBracket = data.nodes;
+					that.correct();
+				}
+				
+				if(typeof data.correctedAgainst=='string') {
+					that.fetchBracketFromDB(data.correctedAgainst, 'season', _loadAndCorrectBracket);
+				}else if (typeof data.correctedAgainst=='number') {
+					that.fetchBracketFromDB(data.correctedAgainst, 'id', _loadAndCorrectBracket);
+				}else if (typeof data.correctedAgainst=='object') {
+					that.correctedBracket = data.correctedAgainst;
+				}
+			}
+			
+			
 			// Bind window resize event to bracket resize handler
 			$(window).resize(function(e) {
 				// Only execute the (very consumptive) resize event
@@ -121,7 +159,41 @@ function Bracket(params) {
 			});
 			
 			// Layout Bracket with nodes
-			this.layoutBracket(data.nodes);
+			if(this.nodes) {
+				this.layoutBracket(data.nodes);
+			}
+		},
+		//
+		//
+		//
+		fetchBracketFromDB : function(bracket, filter, callback, method) {
+			// Fetch the corrected bracket from the server. Able to fetch by name or by ID.
+			// Specify which by 'key' (either 'season' or 'id').
+			var that = this;
+			if(method===undefined) method = 'heap';
+			$.ajax({
+				url : that.baseURL + 'fetchbracket.py?db=1&method='+method+'&id='+bracket+'&f='+filter,
+				dataType : 'json',
+				success : callback,
+				error : function(data, msg) {
+					that.error("Error fetching bracket `"+ bracket +"`. Status: "+msg);
+				}
+			});
+		},
+		//
+		//
+		//
+		loadStatsFromDB : function(type, id, callback) {
+			// Fetch stats from Database given object type and ID. (e.g., Squad, 1).
+			var that = this;
+			$.ajax({
+				url : that.baseURL + 'fetchstats.py?type='+ type +'&id='+ id,
+				dataType : 'json',
+				success : callback,
+				error : function(Data, msg) {
+					that.error("Error fetching stats `"+ type +" / "+ id +"`. Status: "+ msg);
+				},
+			});
 		},
 		//
 		//
@@ -154,6 +226,16 @@ function Bracket(params) {
 			// Adjust BG Size
 			that.bg.attr('width', that.width)
 				   .attr('height', that.height);
+				   
+			// Move Title
+			that.titleLbl.attr('x', that.width/2).attr('y', that.height*that.titleYOffsetRat);	   
+			
+			// Move scoreLbl
+			if(that.scoreLbl) {
+				var titBox = that.titleLbl.getBBox();
+				that.scoreLbl.attr('x', that.titleLbl.attr('x'))
+							 .attr('y', titBox.y2 + that.scoreLblYPad);
+			}
 			
 			// Re-layout bracket
 			var fcnt = 0;
@@ -337,7 +419,8 @@ function Bracket(params) {
 					if(that.popup) {
 						that.popup.destroy();
 					}
-					that.popup = new Popup(that, node.data.id, node.data.id+(node.data.id%2? 1 : -1));
+					var t2id = node.data.id+(node.data.id%2? 1 : -1);
+					that.popup = new Popup(that, node.data.sid, that.nodes[t2id].data.sid);
 					that.popup.init();
 				});
 			
@@ -517,9 +600,6 @@ function Bracket(params) {
 				});
 			});
 			
-			
-			
-			
 		},
 		//
 		//
@@ -575,10 +655,9 @@ function Bracket(params) {
 					rinv = this.rounds-roid; // inverse of round id
 				// Get Horizontal offset in tree
 				var k = n - (1<<roid);
-				// Get number of teams in each region
-				var gs = (roid>1)? (1<<(roid-2)) : 1;
 				// Get Region ID, adjust finalist teams specially
-				var reid = (roid==1)? k<<1 : Math.floor(k / gs);
+				var gs = (roid>1)? 1<<(roid-2) : 1;
+				var reid = (roid>1)? k>>(roid-2) : k<<1;
 				// Now calculate offset based on Round, Region, and Offset
 				// - Decompose round ID into quadrant of bracket
 				var hHalf = reid>1? 1 : -1,
@@ -706,29 +785,90 @@ function Bracket(params) {
 			np.y = -(point.y * efheight) + this.origin.y - (efheight>>1);
 			
 			return np;
-		}
-	
-	};
-	
+		},
+		//
+		//
+		//
+		correct : function(correctedBracket) {
+			var that = this;
+			if(correctedBracket===undefined) correctedBracket = that.correctedBracket;
+			if(!correctedBracket) return;
+			
+			that.score = 0;
+			
+			// Iterate through corrected bracket and correct.
+			for(var i=0; i<((1<<that.rounds)-1); i++) {
+				var r = log2(i+1)
+				
+				if(that.correctedBracket[i].data.sid==false) continue;
+				if(that.correctedBracket[i].data.sid==that.nodes[i].data.sid) {
+					// Bracket is correct
+					that.nodes[i].text.attr('fill', null);
+					that.nodes[i].text.node.setAttribute('class', that.textCorrectCls);
+					that.score += that.scores[r];
+				}else{
+					// Bracket is incorrect
+					that.nodes[i].text.attr('fill', null);
+					that.nodes[i].text.node.setAttribute('class', that.textIncorrectCls);
+				}
+			}
+			
+			// Set score label to display score
+			if(that.scoreLbl){
+				that.scoreLbl.attr('text', 'Scored '+that.score+' out of 1920.');
+			}
+		},
+		//
+		//
+		//
+		error : function(msg) {
+			if(this.paper==null) {
+				this.adjustSizes();
+				this.paper = Raphael(0, 0, this.width, this.height);
+			}
+			var e = this.paper.text(this.width/2,
+									this.height/2,
+									"Error: "+msg)
+							  .attr('text-anchor', 'middle')
+							  .attr('fill', 'red');
+		},
+		//
+		//
+		//
+	}; // End of object
+	//
+	//
+	//
+	// Extend object with custom parameters and return it
 	return $.extend({}, obj, params);
 }
+
+
+
+
+
+
+
 
 
 // Popup window (to display stats and stuff)
 function Popup(master, teamOneId, teamTwoId) {
 	return {
 		master    : master,
-		paper     : master.paper,
 		teams     : [teamOneId, teamTwoId],
 		width     : master.width>>1,
 		height    : master.height>>1,
 		x	      : master.width>>2,
 		y	      : master.height>>2,
-		escRadius : 5,
-		escPad	  : 2,
+		// content
+		template  : "<table id='stats'><thead><tr id='name'><th></th><th class='team-1'></th><th class='team-2'></th></tr></thead> <tbody></tbody></table>",
 		// containers
-		bg		  : {},
-		esc		  : {},
+		me		  : null,
+		dataRows  : null,
+		tableID	  : '#stats',
+		target	  : '#statbox',
+		retrieved : 0,
+		data      : [],
 		//
 		//
 		// Functions
@@ -736,30 +876,89 @@ function Popup(master, teamOneId, teamTwoId) {
 		//
 		init : function() {
 			var that = this;
-			// Show stuff
-			this.bg = this.paper.rect(this.x, this.y, this.width, this.height)
-						        .attr('fill', master.popupBgColor)
-						        .attr('opacity', master.popupOpacity);
-								
-			var escX = this.x + this.width - (this.escRadius<<1) - this.escPad,
-				escY = this.y + 2*this.escPad + this.escRadius;
-			this.esc = this.paper.circle(escX, escY, this.escRadius)
-								 .attr('fill', '#900')
-								 .attr('cursor', 'pointer');
-								 
-			this.esc.hover(function(){ this.attr('fill', '#b00'); }, function() { this.attr('fill', '#900'); })
-					.click(function() {
-						that.destroy();
+			
+			// Create dialog
+			
+			if(!$(this.target).length) {
+				// Create target element if needed
+				$('body').append('<p id="'+this.target.substring(1)+'">');
+			}
+			
+			if(!$(this.tableID).length) {
+				// Create table
+				$(this.target).append(this.template);
+			}
+			
+			this.me = $(this.target);
+			
+			this.me.dialog({
+				autoOpen : true,
+				closeOnEscape: true,
+				draggable: true,
+				height: that.height,
+				width: that.width,
+				modal: true,
+				position: {my: 'center', at: 'center', of: window},
+				resizable: true,
+				title : "Loading stats ...",
+			});
+			
+			this.retrieved = 0;
+			// Load stats from DB and display in box.
+			this.teams.forEach(function(sid, i) {
+				that.master.loadStatsFromDB('squad', sid,
+					function(data) {
+						if(!that.dataRows) that.makeDataRows(data);
+						that.displayStats(data, i+1);
+						
+						that.retrieved++;
+						if(that.retrieved==that.teams.length) {
+							that.updateTitle();
+						}
 					});
+			});
+			
+		},
+		//
+		//
+		//
+		makeDataRows : function(data) {
+			// Make table rows based on keys in data.stats
+			this.dataRows = {};
+			var tbody = $(this.tableID).find('tbody');
+			for(var key in data.stats) {
+				tbody.append($("<tr id='"+ key +"'><th>"+ key +"</th><td class='team-1'></td><td class='team-2'></td></tr>"));
+				this.dataRows[key] = $(this.tableID+' #'+key);
+			}
+		},
+		//
+		//
+		//
+		displayStats : function(data, num) {
+			// Display stats in table in dialog
+			var table = $(this.tableID);
+			this.data.push(data);
+			
+			table.find('#name .team-'+num).text(data.name);
+			
+			for(var key in data.stats) {
+				this.dataRows[key].find('.team-'+num).text(data.stats[key]);
+			}
+			
+		},
+		//
+		//
+		//
+		updateTitle : function() {
+			// Update title of dialog to be specific
+			this.me.dialog('option', 'title', 'Season stats for '+ this.data[0].name + ' ('+ this.data[0].season +') and '+ this.data[1].name +' ('+ this.data[1].season +')');
 		},
 		//
 		//
 		//
 		destroy : function() {
-			// Remove object from screen
-			this.bg.remove();
-			this.esc.remove();
-			
+			this.me.dialog('destroy');
+			$(this.target).empty();
 			// Remove the reference to this object on master.
 			// Do this to make it obvious to the program that there is currently
 			// no popup. Also breaks the reference so popup object can be swept.
@@ -767,6 +966,12 @@ function Popup(master, teamOneId, teamTwoId) {
 		}
 	};
 }
+
+
+
+
+
+
 
 
 // Helper functions
@@ -787,6 +992,12 @@ function log2(x) {
 	}
 	return n;
 }
+
+
+
+
+
+
 
 
 
