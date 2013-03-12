@@ -47,13 +47,13 @@ elif not er:
         # Place general info about Team in return dict
         ret['name'] = e.team.name
         ret['season'] = e.season
-        ret['wins'] = len(e.wins)
-        ret['losses'] = len(e.losses)
         
         # Place stats object in return dict
         ret['stats'] = dict(e.stats.items())
         ret['stats']['rpi'] = e.rpi
         ret['stats']['wwp'] = e.win_pct(weighted=True)
+        ret['wins'] = len(e.wins)
+        ret['losses'] = len(e.losses)
 
     else:
         # Nothing else supported so far
