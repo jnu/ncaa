@@ -43,6 +43,8 @@ function Bracket(params) {
 		// Zoom effects
 		zoomDuration       : 300,
 		zoomEasing         : function(t){ return t; },
+		// Auto-caching -- cache on load
+		autoCache		   : true,
 		//
 		//
 		//
@@ -86,6 +88,7 @@ function Bracket(params) {
 		score			   : null,
 		scoreLbl		   : null,
 		scoreLblYPad	   : 10,
+		statsCache		   : null,
 		//
 		//
 		//
@@ -162,6 +165,13 @@ function Bracket(params) {
 			if(this.nodes) {
 				this.layoutBracket(data.nodes);
 			}
+			
+			// Start caching stats in the background
+			if(that.autoCache) {
+				for(var i=(1<<that.rounds)-1; i<that.nodes.length; i++) {
+					that.loadStatsFromDB('squad', that.nodes[i].data.sid, function(d) { return; }, true);
+				}
+			}
 		},
 		//
 		//
@@ -183,9 +193,31 @@ function Bracket(params) {
 		//
 		//
 		//
-		loadStatsFromDB : function(type, id, callback) {
+		loadStatsFromDB : function(type, id, callback, cache) {
 			// Fetch stats from Database given object type and ID. (e.g., Squad, 1).
 			var that = this;
+			
+			if(cache) {
+				// Make sure cache is set up
+				that.statsCache = that.statsCache || {};
+				that.statsCache[type] = that.statsCache[type] || {};
+				
+				// Check cache for requested data
+				if(that.statsCache[type][id]) {
+					// If data is found in cache, return from cache without sending
+					// request to server.
+					callback(that.statsCache[type][id]);
+					return;
+				}
+				
+				var cb2 = callback;
+				callback = function(data) {
+					// Interceptive callback to cache data
+					that.statsCache[type][id] = data;
+					cb2(data);
+				}
+			}
+			
 			$.ajax({
 				url : that.baseURL + 'fetchstats.py?type='+ type +'&id='+ id,
 				dataType : 'json',
@@ -915,7 +947,7 @@ function Popup(master, teamOneId, teamTwoId) {
 						if(that.retrieved==that.teams.length) {
 							that.updateTitle();
 						}
-					});
+					}, true);
 			});
 			
 		},
@@ -927,7 +959,7 @@ function Popup(master, teamOneId, teamTwoId) {
 			this.dataRows = {};
 			var tbody = $(this.tableID).find('tbody');
 			for(var key in data.stats) {
-				tbody.append($("<tr id='"+ key +"'><th>"+ key +"</th><td class='team-1'></td><td class='team-2'></td></tr>"));
+				tbody.append($("<tr id='"+ key +"'><th>"+ key +"</th><td class='team-1 val'></td><td class='team-2 val'></td></tr>"));
 				this.dataRows[key] = $(this.tableID+' #'+key);
 			}
 		},
@@ -942,7 +974,8 @@ function Popup(master, teamOneId, teamTwoId) {
 			table.find('#name .team-'+num).text(data.name);
 			
 			for(var key in data.stats) {
-				this.dataRows[key].find('.team-'+num).text(data.stats[key]);
+				var fnum = data.stats[key].toPrecision(4);
+				this.dataRows[key].find('.team-'+num).text(fnum);
 			}
 			
 		},
