@@ -1,0 +1,20 @@
+@charset "UTF-8";
+@import url(http://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,700,400italic);
+
+body {
+	background-color: #FCFBF5;
+	font-family: Source Sans Pro, Arial, sans-serif;
+}
+
+
+
+.game-correct {
+	fill: #680;
+	font-weight: 500;
+}
+
+.game-incorrect {
+	fill: #a45;
+	font-weight: 500;
+	text-decoration: line-through;
+}
