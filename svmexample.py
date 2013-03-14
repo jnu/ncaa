@@ -20,32 +20,6 @@ import random
 
 
 
-class Decider(object):
-    def __init__(self, c, extractor, normalize=None, method=None):
-        self.classifier = c
-        self.extractor = extractor
-        self.normalize = normalize
-    
-        if method is None:
-            if hasattr(c, 'classify'):
-                self.method = getattr(c, 'classify')
-            elif hasattr(c, 'predict'):
-                self.method = getattr(c, 'predict')
-            else:
-                raise TypeError("Unsure what method to call on classifer")
-        else:
-            self.method = getattr(c, method)
-
-    def __call__(self, game):
-        ft = self.extractor(*game.opponents)
-        if self.normalize is not None:
-            ft = self.normalize(ft)
-        p = self.method(ft)
-        return p
-
-
-
-
 
 class Normalizer(object):
     '''Class for feature normalization. Does mean removal and variance
@@ -297,7 +271,7 @@ if __name__=='__main__':
     
     some_games = Game.get_games_with_data(session, limit=400)
 
-    sample_a, sample_b = [], []
+    sample = []
     
     
     for i, game in enumerate(some_games):
@@ -307,14 +281,9 @@ if __name__=='__main__':
         opponents = [squad for squad in game.opponents]
         winner = opponents.index(game.winner)
     
-        # Make one sample with Squad 1's offense and Squad 2's defense
-        ft_a = extract_features(*opponents)
-        sample_a.append((ft_a, str(winner),))
-
-        # Make another sample with Squad 2's offense and Squad 1's offense
-        opponents.reverse()
-        ft_b = extract_features(*opponents)
-        sample_b.append((ft_b, str(winner),))
+        # Extract features and compile sample
+        ft = extract_features(*opponents)
+        sample.append((ft, str(winner),))
 
 
     print_good("Commiting calculated stats to db")
@@ -323,8 +292,7 @@ if __name__=='__main__':
 
 
     print_info("Creating and normalizing data set ...")
-    data_a = DataSet(sample_a)
-    data_b = DataSet(sample_b)
+    data = DataSet(sample)
 
 
 
@@ -343,26 +311,23 @@ if __name__=='__main__':
         }
     ]
 
-    classifier_a = GridSearchCV(SVC(probability=True), grid,
+    classifier = GridSearchCV(SVC(probability=True), grid,
                                 verbose=3, refit=True, cv=5, n_jobs=4)
-    #classifier_b = GridSearchCV(SVC(probability=True), grid,
-    #                            verbose=3, refit=True, cv=10, n_jobs=4)
 
     print_info("Searching for optimal classifier ...")
     # Train the classifier
-    classifier_a.fit(*data_a.data)
-    #classifier_b.fit(*data_b.data)
+    classifier.fit(*data.data)
     
 
     # Score the classifier
-    print_comment("Classifier A accuracy: %.3f" % classifier_a.best_score_)
+    print_comment("Classifier accuracy: %.3f" % classifier.best_score_)
     #print_comment("Classifier B accuracy: %.3f" % classifier_b.best_score_)
 
 
     # Create decision function from classifier
-    decider = Decider(classifier_a,
-                      lambda *g: data_a.convert(extract_features(*g)),
-                      data_a.normalize)
+    decider = GameDecider(classifier,
+                          lambda *g: data.convert(extract_features(*g)),
+                          data.normalize)
 
     # Pull tournaments from the database to test real-world model performance
 

@@ -1110,6 +1110,10 @@ class Tournament(Base):
             'nodes' : []
         }
         
+        if hasattr(self, '_correctedAgainst'):
+            # Give ID of tournament used to correct bracket, if corrected
+            output['correctedAgainst'] = self._correctedAgainst
+        
         def _createNode(id_, squad, score, children=None):
             # Used to specify consistent structure of nodes.
             node = {
@@ -1242,11 +1246,52 @@ to unknown round %s" % (val, key))
         Sets the 'accurate' attribute on TournamentGames to True if correct,
         False if incorrect, and None if unavailable (e.g., when the game
         hasn't been played yet).'''
+        self._correctedAgainst = realtourny.id
         for i in range(len(realtourny)):
             if realtourny[i].winner is None:
                 self[i].accurate = None
             else:
                 self[i].accurate = realtourny[i].winner == self[i].winner
+
+
+
+# - Tournament -- /
+class GameDecider(object):
+    '''Wrapper for NLTK or SciKit-Learn classifiers. Creates a callable
+    object that can be passed as the Decision Function in Tournament
+    simulation. Pass classifier and feature extractor (callable) as
+    params on init. Optionally also specify a callable for Normalization
+    (highly recommended!).
+    Note, any other type of classifier object can be passed. If it doesn't
+    implement classify() (like NLTK) or predict() (like SKL), you can pass
+    (as a string) the method to call for classification in the `method`
+    parameter. This method should expect as a parameter whatever you return
+    from your `extractor`.'''
+    def __init__(self, classifier, extractor, normalize=None, method=None):
+        self.classifier = classifier
+        self.extractor = extractor
+        self.normalize = normalize
+    
+        if method is None:
+            if hasattr(classifier, 'classify'):
+                self.method = getattr(classifier, 'classify')
+            elif hasattr(classifier, 'predict'):
+                self.method = getattr(classifier, 'predict')
+            else:
+                raise TypeError("Unsure what method to call on classifer")
+        else:
+            self.method = getattr(classifier, method)
+
+    def __call__(self, game):
+        '''Extract features from given Game, then classify.
+        Also normalizes if you're into that.'''
+        ft = self.extractor(*game.opponents)
+        if self.normalize is not None:
+            ft = self.normalize(ft)
+        p = self.method(ft)
+        return p
+
+
 
 
 
