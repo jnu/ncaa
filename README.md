@@ -19,7 +19,7 @@ prediction software. They reference a [sqlite database on my server](http://joen
 
 ### Helper modules
 
-+ ncaalib.aux.output`   Helper module for standardized output formatting. Required to run `dbgmgr.py`.
++ `ncaalib.aux.output`   Helper module for standardized output formatting. Required to run `dbgmgr.py`.
 
 + `ncaalib.aux.terminal` Module used by `ncaalib.aux.output` for terminal manipulation. Note that this module does not play well with Windows.
 
