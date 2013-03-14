@@ -6,8 +6,6 @@ body {
 	font-family: Source Sans Pro, Arial, sans-serif;
 }
 
-
-
 .game-correct {
 	fill: #680;
 	font-weight: 500;
@@ -19,7 +17,6 @@ body {
 	text-decoration: line-through;
 }
 
-
 table#stats {
 	width: 100%;
 }
@@ -30,4 +27,12 @@ tbody>tr>th {
 
 td.val {
 	text-align: right;
+}
+
+th.team-1 {
+	width: 19%;
+}
+
+th.team-2 {
+	width: 19%;
 }

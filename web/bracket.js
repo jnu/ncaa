@@ -18,33 +18,38 @@ function Bracket(params) {
 		// Note: These can all be overridden on initialization by setting `params`
 		// object appropriately.
 		// Node Params
-		nodeVPadding       : 1,
-		nodeHPadding       : 5,
-		nodeColor	       : '#FCD3B1',
-		nodeHoverColor     : 'rgb(92, 199, 92)',
-		opponentPathColor  : 'rgb(142, 202, 202)',
-		opponentHoverColor : 'rgb(69, 149, 149)',
-		teamPathColor	   : 'rgb(160, 227, 160)',
-		lostGameColor	   : 'rgb(249, 115, 115)',
-		lostGameHoverColor : 'rgb(162, 37, 37)',
-		nodeStroke	       : 'rgb(255, 86, 0)',
-		textCorrectCls	   : 'game-correct',
-		textIncorrectCls   : 'game-incorrect',
-		nodeStrokeWidth    : 1,
-		nodeHoverScale     : {x: 1.1, y: 1.2},
-		pathType	       : 'smooth',			// No other options are supported yet.
-		pathColor		   : '#333',
-		cornerRadius       : 10,
-		bgColor            : '#eee',
-		bgOpacity	       : 0.0,
-		bgStroke           : '#aaa',
-		popupBgColor	   : '#eee',
-		popupOpacity	   : 0.7,
+		nodeVPadding         : 1,
+		nodeHPadding         : 5,
+		nodeColor	         : '#FCD3B1',
+		nodeHoverColor       : 'rgb(92, 199, 92)',
+		opponentPathColor    : 'rgb(142, 202, 202)',
+		opponentHoverColor   : 'rgb(69, 149, 149)',
+		teamPathColor	     : 'rgb(160, 227, 160)',
+		lostGameColor	     : 'rgb(249, 115, 115)',
+		lostGameHoverColor   : 'rgb(162, 37, 37)',
+		nodeStroke	         : 'rgb(255, 86, 0)',
+		navButtonFill	     : 'rgb(30,30,30)',
+		navButtonHoverFill   : 'rgb(100,100,100)',
+		navButtonStroke	     : 'rgb(10,10,10)',
+		navButtonHoverStroke : 'rgb(20,20,20)',
+		textCorrectCls	     : 'game-correct',
+		textIncorrectCls     : 'game-incorrect',
+		nodeStrokeWidth      : 1,
+		nodeHoverScale       : {x: 1.1, y: 1.2},
+		pathType	         : 'smooth',			// No other options are supported yet.
+		pathColor		     : '#333',
+		cornerRadius         : 10,
+		bgColor              : '#eee',
+		bgOpacity	         : 0.0,
+		bgStroke             : '#aaa',
+		popupBgColor	     : '#eee',
+		popupOpacity	     : 0.7,
+		navButtonSize		 : 12,		// length of a or b side of one nav triangle
 		// Zoom effects
-		zoomDuration       : 300,
-		zoomEasing         : function(t){ return t; },
+		zoomDuration         : 300,
+		zoomEasing           : "<>",    // Can either be Raphael.easing_formulas id or a function mapping to range [0,1]
 		// Auto-caching -- cache on load
-		autoCache		   : true,
+		autoCache		     : true,
 		//
 		//
 		//
@@ -60,7 +65,6 @@ function Bracket(params) {
 		//
 		//
 		/// --- Containers and stuff. Don't customize. --- ///
-		
 		zoomAnimation      : null,
 		paper     	       : null,
 		bg        	       : {},
@@ -285,6 +289,7 @@ function Bracket(params) {
 									fcnt += 1;
 									if(fcnt==that.nodes.length-1) {
 										that.zoomOnRegion(that.state.region);
+										that.createNavArrows(that.state.region);
 									}
 								});
 				me.text.attr('x', coords.text.x).attr('y', coords.text.y);
@@ -555,25 +560,29 @@ function Bracket(params) {
 					dy = y - curView[1],
 					dw = w - curView[2],
 					dh = h - curView[3];
-				var t = 0,
-					delta = 15; // interval
+				var easingFunction = typeof that.zoomEasing=='function'? that.zoomEasing : Raphael.easing_formulas[that.zoomEasing];
+				var delta = 15, // interval
+					t = 0,
+					maxSteps = that.zoomDuration / delta;
 					
 				(function _animateZoom(r) {
 				
 					// move one frame
-					var d = (t>=that.zoomDuration)? 1 :that.zoomEasing(t/that.zoomDuration);
+					var d = (t>=maxSteps)? 1 : easingFunction(t/maxSteps);
 					
 					that.paper.setViewBox(curView[0] + dx*d,
 										  curView[1] + dy*d,
 										  curView[2] + dw*d,
 										  curView[3] + dh*d, false);
 					
-					if(t>=that.zoomDuration) {
+					if(t++>=maxSteps) {
 						clearInterval(that.zoomAnimation);
+						if(i>=0) {
+							// Create navigation arrows if zoomed in
+							that.createNavArrows(i);
+						}
 						return;
 					}
-					
-					t += delta;
 					
 					if(r) that.zoomAnimation = setInterval(_animateZoom, delta);
 				})(true);
@@ -581,28 +590,25 @@ function Bracket(params) {
 			
 			// Keep current state
 			that.state.region = i;
-			
-			// Create navigation arrows if zoomed in
-			if(i>=0) {
-				that.createNavArrows(i, x, y, x+w, y+h);
-			}
 		},
 		//
 		//
 		//
 		createNavArrows : function(i, x, y, x2, y2) {
 			var that = this;
-			// Create arrows for navigating zoomed-in bracket
-			var tpath = function(x, y) { return "M "+x+" "+y+" l 40 0 l 20 40 z"; };
 			
 			// Calculate layout parameters
 			var vb = that.paper._viewBox,
-				bounds = [x, y, x2, y2], // left top right bottom
-				mx = (i >= (that.regions.length>>1))? 1 : -1,    // horizontal offset magnitude
+				vbH = that.paper.height * that.paper._vbSize,		// Can't rely on VB's purported height!
+				vbW = that.paper.width * that.paper._vbSize,		// Can't rely on VB's purported width!
+				bounds = [x||vb[0], y||vb[1], x2||vb[0]+vbW, y2||vb[1]+vbH], // left top right bottom
+				mx = (i>1)? 1 : -1,    // horizontal offset magnitude (negative for 0, 1)
 				my = (i%2)? 1 : -1, // vertical offset magnitude
-				cx = bounds[((3-i)>>1)<<1], // bounds[0] for region Ids 2 and 3, bounds[2] for 0 and 1
-				cy = bounds[(((i+1)%2)<<1)+1],   // bounds[1] for region Ids 1 and 3, bounds[3] for 0 and 2.
-				delta = 20;
+				cx = bounds[i>1? 0 : 2], // LEFT (0) for region Ids 2 and 3, RIGHT (2) for 0 and 1
+				cy = bounds[(i%2)? 1 : 3],   // TOP (1) for region Ids 1 and 3, BOTTOM (3) for 0 and 2.
+				delta = that.navButtonSize,
+				h = Math.sqrt(2*Math.pow(delta, 2)),
+				th = Math.sqrt(Math.pow(delta, 2) - Math.pow(h/2, 2));
 			
 			// Now make labels from regions
 			var xLbl = that.regions[(i+2)%that.regions.length],
@@ -611,21 +617,57 @@ function Bracket(params) {
 			// Make text elements
 			that.navButtons.forEach(function(me) { me.remove(); });
 			that.navButtons = [];
-			that.navButtons.push(that.paper.text(cx + mx*delta, cy + 4*my*delta, xLbl));
-			that.navButtons.push(that.paper.text(cx + 4*mx*delta, cy + my*delta, yLbl)
-								 .rotate(-my*90));
+			
+			// Make triangle that navigates HORIZONTALLY
+			that.navButtons.push(that.paper.path('M '+ (cx+(th)*mx) +' '
+													 + (cy+(delta+th)*my) +
+												' l 0 '+ (my*h) +
+												' l ' + -(th*mx) +' '+ (-my*h/2) +
+												' z')
+											.data('label', xLbl));
+			
+	
+			// make triangle that navigates VERTICALLY
+			that.navButtons.push(that.paper.path('M '+ (cx+(delta+th)*mx) + ' '
+												     + (cy+(th)*my) +
+												' l '+ (mx*h) +' 0 ' +
+												' l '+ (-mx*h/2) +' '+ (-my*th) +
+												' z')
+											.data('label', yLbl));
 								 
 								 
-			that.navButtons.push(that.paper.text(cx + mx*delta, cy + my*delta, "Championship"));
+			// Make triangle with point at center for CHAMPIONSHIP zoom button
+			that.navButtons.push(that.paper.path('M '+ (cx+mx*th) +' '
+													 + (cy+my*th) +
+											    ' l 0 '+ delta*my +
+												' l '+ delta*mx +' '+ (-delta*my) +
+												' z')
+											.data('label', 'Championship'));
 								 
 								 
 			// Button for zooming out
-			that.navButtons.push(that.paper.text(cx + 4*mx*delta, cy + 4*my*delta, "Full"));
+			that.navButtons.push(that.paper.path('M '+ (cx+mx*(delta+th)) +' '
+													 + (cy+my*(delta+th)) +
+												' l 0 '+ (my*delta/2) +
+												' l '+ (delta*mx/2) +' 0' +
+												' l 0 '+ (-my*delta/2) +
+												' z')
+											.data('label', "Full"));
 			
 			that.navButtons.forEach(function(me) {
 				me.attr('cursor', 'pointer')
+				  .attr('fill', that.navButtonFill)
+				  .attr('stroke', that.navButtonStroke)
+				  .hover(function() {
+					  	this.attr('fill', that.navButtonHoverFill)
+					  	    .attr('stroke', that.navButtonHoverStroke);
+				  	},
+				  	function() {
+						this.attr('fill', that.navButtonFill)
+							.attr('stroke', that.navButtonStroke);
+				  	})
 				  .click(function() {
-						var text = me.attr('text'),
+						var text = me.data('label'),
 							to = text=='Championship'? 'ff' : that.regions.indexOf(text);
 						that.navButtons.forEach(function(me) { me.remove(); });
 						that.zoomOnRegion(to, true);
@@ -901,6 +943,44 @@ function Popup(master, teamOneId, teamTwoId) {
 		target	  : '#statbox',
 		retrieved : 0,
 		data      : [],
+		labels    : {
+			"rpi"			        : "Naïve Strength of Schedule (RPI)",
+			"wins"				    : "Wins",
+			"losses"				: "Losses",
+			"wp"					: "Unweighted Winning %",
+			"wwp"			        : "Weighted Winning %",
+			"field_goals_attempted" : "Total Field Goals Attempted",
+			"field_goals_made"		: "Total Field Goals Made",
+			"fg_pct"                : "Field Goal Shooting %",
+			"looks_avg"				: "Field Goals Taken Per Game (avg.)",
+			"field_goal_avg"        : "Field Goals Made Per Game (avg.)",
+			"threes_attempted"      : "Total 3 Ptrs Shot",
+			"threes_made"			: "Total 3 Ptrs Made",
+			"threes_pct"            : "3 Pt. Shooting %",
+			"threes_avg"			: "3 Ptrs Per Game (avg.)",
+			"points_avg"			: "Points Per Game (avg.)",
+			"points"				: "Total Points Score",
+			"lpm"					: "Field Goals Taken Per Minute (avg.)",
+			"ppm"			        : "Points Per Minute (avg.)",
+			"assists"				: "Total Assists", 
+			"assists_avg"			: "Assists Per Game (avg.)",
+			"free_throws_attempted" : "Total Free Throws Shot",
+			"free_throws_made"      : "Total Free Throws Made",
+			"ft_pct"				: "Free Throw Shooting %",
+			"free_throws_avg"       : "Free Throws Per Game (avg.)",
+			"turnovers"				: "Total Turnovers",
+			"turnovers_avg"         : "Turnovers Per Game (avg.)",
+			"steals"			    : "Total Steals",
+			"steals_avg"		    : "Steals Per Game (avg.)",
+			"blocks"				: "Total Blocks",
+			"blocks_avg"			: "Blocks (avg.)",
+			"rebounds"				: "Total Rebounds",
+			"rebounds_avg"			: "Rebounds Per Game (avg.)",
+			"defensive_rebounds"    : "Total Defensive Rebounds",
+			"offensive_rebounds" 	: "Total Offensive Rebounds",
+			"fouls"					: "Total Fouls",
+			"fouls_avg"			    : "Fouls Per Game (avg.)",
+		},
 		//
 		//
 		// Functions
@@ -935,12 +1015,17 @@ function Popup(master, teamOneId, teamTwoId) {
 				title : "Loading stats ...",
 			});
 			
+			if(!that.dataRows) that.makeDataRows();
+			
+			that.setLoading(true, 'both');
+			
 			this.retrieved = 0;
 			// Load stats from DB and display in box.
 			this.teams.forEach(function(sid, i) {
 				that.master.loadStatsFromDB('squad', sid,
 					function(data) {
-						if(!that.dataRows) that.makeDataRows(data);
+						that.setLoading(false, 'team-'+(i+1), data.name);
+						
 						that.displayStats(data, i+1);
 						
 						that.retrieved++;
@@ -954,12 +1039,83 @@ function Popup(master, teamOneId, teamTwoId) {
 		//
 		//
 		//
-		makeDataRows : function(data) {
-			// Make table rows based on keys in data.stats
+		setLoading : function(switch_, target, newTitle) {
+			// Set loading animation on columns in dialog boxes (first, second, both)
+			var that = this;
+			if(target===undefined) target = 'both';
+			target = target.toLowerCase();
+			
+			function _loadingText(flag, $target) {
+				if($target) that[flag+'$T'] = $target;
+				if(that[flag]===undefined) that[flag] = true;
+				if(that[flag+'Cnt']===undefined) that[flag+'Cnt'] = -1;
+				
+				// Increment counter
+				that[flag+'Cnt']++;
+				var i = that[flag+'Cnt'],
+					$t = that[flag+'$T'];
+				
+				// Display text in $target ($t) based on counter
+				var text = "Loading ",
+					p = ".";
+				
+				var np = ~~(i/30)%4;
+				for(var x=0; x<np; x++) text+=p;
+				
+				$t.text(text);
+				
+				if(that[flag]==false) {
+					// Stop running when external flag is set to false
+					clearInterval(that[flag+'Interval']);
+					// Set column title to specified title
+					$t.text(that[flag+"nt"]);
+					// Clean up namespace
+					for(var key in that) {
+						if(key.substring(0, flag.length)==flag) {
+							delete that[key];
+						}
+					}
+					return;
+				}
+				
+				if($target) {
+					// Initiate animation
+					that[flag+'Interval'] = setInterval(function() { _loadingText(flag); }, 20);
+				}
+			}
+			
+			function _dispatch(s, t, nt) {
+				// Dispatch loading animation. Call with "true" or "false" for s
+				// to turn animation on or off. 't' should be the column number.
+				var $t = $('#name .team-'+t),
+					f = "_isLoading_"+t+"_";
+				if(nt!==undefined) that[f+"nt"] = nt;
+				that[f] = s;
+				if(s) {
+					$t.css('text-align', 'left');
+					_loadingText(f, $t);
+				}else{
+					$t.css('text-align', 'center');
+				}
+			}
+			
+			// Direct input to animation.
+			if(target=='first' || target=='team-1' || target=='both') {
+				_dispatch(switch_, 1, newTitle);
+			}
+			if(target=='second' || target=='team-2' || target=='both') {
+				_dispatch(switch_, 2, newTitle);
+			}
+		},
+		//
+		//
+		//
+		makeDataRows : function() {
+			// Make table rows based on labels
 			this.dataRows = {};
 			var tbody = $(this.tableID).find('tbody');
-			for(var key in data.stats) {
-				tbody.append($("<tr id='"+ key +"'><th>"+ key +"</th><td class='team-1 val'></td><td class='team-2 val'></td></tr>"));
+			for(var key in this.labels) {
+				tbody.append($("<tr id='"+ key +"'><th>"+ this.labels[key] +"</th><td class='team-1 val'></td><td class='team-2 val'></td></tr>"));
 				this.dataRows[key] = $(this.tableID+' #'+key);
 			}
 		},
@@ -973,8 +1129,12 @@ function Popup(master, teamOneId, teamTwoId) {
 			
 			table.find('#name .team-'+num).text(data.name);
 			
-			for(var key in data.stats) {
+			for(var key in this.labels) {
 				var fnum = data.stats[key].toPrecision(4);
+				if(this.dataRows[key].text().indexOf("%")>-1) {
+					// Take the hint that this number should be a percentage
+					fnum = (fnum*100).toPrecision(4) + "%";
+				}
 				this.dataRows[key].find('.team-'+num).text(fnum);
 			}
 			
@@ -1003,10 +1163,6 @@ function Popup(master, teamOneId, teamTwoId) {
 
 
 
-
-
-
-
 // Helper functions
 
 function Point(x, y) {
@@ -1029,12 +1185,7 @@ function log2(x) {
 
 
 
-
-
-
-
-
-
+// Initialization on load
 $(function() {
 	// Fonts
 	WebFontConfig = {
