@@ -68,7 +68,7 @@ if __name__=='__main__':
 
     # Get a random sample of games from the DB.
     print_info("Creating sample from games in DB")
-    some_games = Game.get_games_with_data(session, limit=400)
+    some_games = Game.get_games_with_data(session, limit=500)
     sample = []
     
     for i, game in enumerate(some_games):
