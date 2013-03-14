@@ -13,7 +13,6 @@ from ncaalib.data import *
 from ncaalib.aux.output import *
 from sklearn.svm import SVC
 from sklearn.grid_search import GridSearchCV
-from sklearn.preprocessing import StandardScaler
 
 
 # Define a feature extractor
