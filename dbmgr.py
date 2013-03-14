@@ -1,6 +1,6 @@
 # -*- coding: utf8 -*-
 '''
-$ python ncaa2013/dbmgr.py
+$ python util/dbmgr.py
 
 Command-line utility for adding data to the NCAA database through CSV
 and other types of files.
@@ -29,8 +29,8 @@ Copyright (c) 2013 Joe Nudell.
 Freely distributable under the MIT License.
 '''
 # Local Modules
-from ncaa import *
-from output import *
+from ncaalib.ncaa import *
+from ncaalib.aux.output import *
 # Third Party Modules
 from sqlalchemy import create_engine, MetaData, Table, exc
 from sqlalchemy.orm import sessionmaker
