@@ -11,15 +11,17 @@ prediction software. They reference a [sqlite database on my server](http://joen
 
 ### Object Model
 
-+ _ncaa.py_     Object model written in Python using [SQLAlchemy](http://www.sqlalchemy.org/ "SQLAlchemy -- ORM databases in Python"). Database stores information about games, players, and teams in a rich, interconnected fashion. Complete documentation can be found in this file's docstring. Include this module in any script that needs to access DB. Defines several convenience functions for searching the database as well. Can be run in interactive mode, in which case script will automatically create the variable `session` for quick CL investigation of the DB. See full documentation [on my blog](http://joenoodles.com/).
++ `ncaalib.ncaa`     Object model written in Python using [SQLAlchemy](http://www.sqlalchemy.org/ "SQLAlchemy -- ORM databases in Python"). Database stores information about games, players, and teams in a rich, interconnected fashion. Complete documentation can be found in this file's docstring. Include this module in any script that needs to access DB. Defines several convenience functions for searching the database as well. Can be run in interactive mode, in which case script will automatically create the variable `session` for quick CL investigation of the DB. See full documentation [on my blog](http://joenoodles.com/).
 
-+ _dbmgr.py_    Command line utility for managing the database. Provides some handy routines for mainting the database. Relies heavily on output from scrapers (also provided in this repo). Run `python dbmgr --help` for a complete list of options.
++ `dbmgr.py`    Command line utility for managing the database. Provides some handy routines for mainting the database. Relies heavily on output from scrapers (also provided in this repo). Run `python dbmgr --help` for a complete list of options.
+
++ `svmexample.py`    Demonstration of model training and Tournament simulation using data from the database. 
 
 ### Helper modules
 
-+ _output.py_   Helper module for standardized output formatting. Required to run `dbgmgr.py`.
++ ncaalib.aux.output`   Helper module for standardized output formatting. Required to run `dbgmgr.py`.
 
-+ _terminal.py_ Module used by `output.py` for terminal manipulation. Note that this module does not play well with Windows.
++ `ncaalib.aux.terminal` Module used by `ncaalib.aux.output` for terminal manipulation. Note that this module does not play well with Windows.
 
 ### Scrapers
 
