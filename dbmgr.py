@@ -16,8 +16,7 @@ Run `python dbmgr.py -h` to see possible command line arguments.
 
 # DEPENDENCIES
 ## LOCAL
-    + ncaa          Module containing DB schema / ORM
-    + output        Output formatting for ncaa project
+    + ncaalib          Module containing DB schema / ORM
     
 ## 3RD PARTY
     + sqlalchemy
@@ -598,8 +597,7 @@ team aliases." % (entry[7]))
         
         clear(stream=stderr)
         print_header("Adding game stats to DB")
-        progbar = ProgressBar(max=len(entries), color='yellow',
-                              line=3, stream=stderr)
+        progbar = ProgressBar(max=len(entries), color='yellow', stream=stdout)
 
         # Map headers onto DB schema
         ## NOTE not really necessary now; assume consistent format
@@ -636,6 +634,7 @@ team aliases." % (entry[7]))
                                  .first()
 
             if squadmember is None:
+                session.commit()
                 # Player doesn't exist. This input file cannot properly create
                 # a player entry in the database; have to use --players option
                 # and input to do that.
@@ -706,7 +705,7 @@ season %s! You'll have to fix the DB by hand." \
                 if opponent_name.isdigit():
                     print_warning("Skipping invitational (no stats available)")
                     continue
-                clear_below(10, start=5, stream=stderr)
+                #clear_below(10, start=5, stream=stderr)
                 print_warning("Couldn't find team. Trying fuzzy matching ...")
 
                 possible_teams = fuzzy_match_team(session, opponent_name)
@@ -888,7 +887,7 @@ team `%s` in season `%s`!" % (opponent_name, season))
                 print_warning("Data is already in DB; nothing added.")
 
             # Prettify screen
-            clear_below(20, stream=stderr)
+            #clear_below(20, stream=stderr)
         print_success("All finished!")
         # Done iterating through entries in GameStats CSV
     # Done processing GameStats CLI
