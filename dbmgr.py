@@ -304,7 +304,8 @@ to DB.', default=None, dest='quickadd')
                         type=argparse.FileType('r'), help='add game stats by \
 player to database', default=None)
     parser.add_argument('-r', '--resume', dest='resume', metavar='name',
-                        help='Resume entry at given player (last name, first)',
+                        help='Resume entry at given player (last name, first). \
+Can also resume by ID.',
                         default=None)
     parser.add_argument('-y', '--yes', dest='yesall', help="Yes to prompts",
                         action='store_true')
@@ -590,8 +591,17 @@ team aliases." % (entry[7]))
         maxlen = len(headers)
         
         resumeat = None
+        resumeat_l = None
         if cli.resume:
             resumeat = str(cli.resume).lower()
+            if resumeat.isdigit():
+                # Resume at ID
+                resumeat = int(float(resumeat))
+                resumeat_l = lambda x: int(float(x[0]))
+            else:
+                # Resume at "Last name, First name"
+                resumeat_l = lambda x: x[1].lower()
+        
 
         entries = [line for line in reader]
         
@@ -617,7 +627,7 @@ team aliases." % (entry[7]))
         
             if resumeat is not None:
                 # Resume entry at given player (Last name, first name)
-                if entry[1].lower()==resumeat:
+                if resumeat_l(entry)==resumeat:
                     print_comment("Resuming entry.")
                     resumeat = None
                 else:
@@ -887,7 +897,7 @@ team `%s` in season `%s`!" % (opponent_name, season))
                 print_warning("Data is already in DB; nothing added.")
 
             # Prettify screen
-            #clear_below(20, stream=stderr)
+            clear_below(20, stream=stderr)
         print_success("All finished!")
         # Done iterating through entries in GameStats CSV
     # Done processing GameStats CLI
