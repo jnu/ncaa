@@ -71,6 +71,13 @@ def parse_opponent_name(name):
         return (name, 'away')
 
 
+def extract_date(entry, field):
+    # Extract date from CSV row. Date is in field. Return datetime.date.
+    month, day, year = [int(p) for p in entry[field].split('/')]
+    date = datetime.date(year, month, day)
+    return date
+
+
 def parse_minutes(mp):
     try:
         return float(mp)
@@ -307,6 +314,8 @@ player to database', default=None)
                         help='Resume entry at given player (last name, first). \
 Can also resume by ID.',
                         default=None)
+    parser.add_argument('-n', '--new', dest='newgames', help="Only add look \
+at games played after last Game in DB", action='store_true')
     parser.add_argument('-y', '--yes', dest='yesall', help="Yes to prompts",
                         action='store_true')
     cli = parser.parse_args()
@@ -590,6 +599,7 @@ team aliases." % (entry[7]))
         headers = reader.next()
         maxlen = len(headers)
         
+        # Set resume logic parameters
         resumeat = None
         resumeat_l = None
         if cli.resume:
@@ -601,8 +611,28 @@ team aliases." % (entry[7]))
             else:
                 # Resume at "Last name, First name"
                 resumeat_l = lambda x: x[1].lower()
-        
 
+        # Set date filter logic parameters
+        earliest_date = None
+        date_extractor = lambda x: extract_date(x, 7)
+        if cli.newgames:
+            # Find the earliest date of a Game with no data in the DB
+            e = session.query(func.min(Game.date))\
+                       .filter(Game.winner==None)\
+                       .one()[0]
+            if e is None:
+                # Alternatively, try to get the latest Game for which there
+                # _is_ data.
+                e = session.query(func.max(Game.date))\
+                           .filter(Game.winner!=None)\
+                           .one()[0]
+                if e is None:
+                    # Wut? No Games in DB?
+                    print_warning("Couldn't filter new games. Something might \
+be very wrong with the database. You should check it by hand.")
+            earliest_date = e
+
+        # Set up iteration
         entries = [line for line in reader]
         
         clear(stream=stderr)
@@ -619,12 +649,12 @@ team aliases." % (entry[7]))
                 # Make sure line is of proper length
                 entry.append('')
             
-            progbar.update(message=entry[1])
+            progbar.update(message="%s (%s)" % (entry[1], entry[0]))
             print >>stderr, ""
         
             changed = False
         
-        
+            # -- RESUME LOGIC -- #
             if resumeat is not None:
                 # Resume entry at given player (Last name, first name)
                 if resumeat_l(entry)==resumeat:
@@ -633,7 +663,13 @@ team aliases." % (entry[7]))
                 else:
                     print_comment("Skipping forward ...")
                     continue
-                    
+
+            # -- DATE LOGIC -- #
+            if earliest_date is not None:
+                # Don't check entries that come before specified date
+                if date_extractor(entry)<earliest_date:
+                    print_comment("Skipping older Game ... ")
+                    continue
 
             # Attempt to find SquadMember in DB (die if doesn't exist)
             player_id = int(float(entry[0]))
@@ -664,40 +700,61 @@ for.)")
                     changed = True
                     print_info("Creating new season for player ... ")
                     player = session.query(Player).get(player_id)
+                    
                     if player is None:
                         print_error("Player doesn't exist in DB at all. Make \
 sure that players have all been added to DB and try again.")
-                        exit(21)
-                    else:
-                        # Get last team player played for
-                        try:
-                            last_team = player.career[-1].squad.team
-                        except:
-                            print_warning("No record of this player playing \
+                        # Prompt: Enter new player?
+                        np = raw_input("Enter new player? ", color='blue')
+                        
+                        if is_yes(np):
+                            # Prompt first name, last name
+                            first_name = raw_input("  First Name? ",
+                                                   color='cyan')
+                            last_name = raw_input("  Last Name? ", color='cyan')
+                            np = Player(first_name, last_name, id=player_id)
+                            session.add(np)
+                            session.commit()
+                        else:
+                            # Quit.
+                            print_error("Not going to continue updating DB.")
+                            exit(21)
+
+                    # -- Find Squad for this player
+                    # Get last team player played for
+                    try:
+                        last_team = player.career[-1].squad.team
+                    except:
+                        print_warning("No record of this player playing \
 for anyone ever.")
-                            tid = raw_input("Enter team ID:")
-                            fail = False
-                            try:
-                                last_team = session.query(Team).get(int(tid))
-                            except:
-                                fail = True
-                            if fail or last_team is None:
-                                print_error("Failed to fix DB. Might have to \
+                        tid = raw_input("Enter team ID:")
+                        fail = False
+                        
+                        try:
+                            last_team = session.query(Team).get(int(tid))
+                        except:
+                            fail = True
+
+                        if fail or last_team is None:
+                            print_error("Failed to fix DB. Might have to \
 do it by hand.")
-                                exit(22)
-                        # Get Squad for Team in given season
-                        squad = session.query(Squad)\
-                                       .filter(Squad.team_id==last_team.id)\
-                                       .filter(Squad.season==season)\
-                                       .first()
-                        if squad is None:
-                            print_error("Squad does not exist for %s in the \
+                            exit(22)
+                    # Get Squad for Team in given season
+                    squad = session.query(Squad)\
+                                    .filter(Squad.team_id==last_team.id)\
+                                    .filter(Squad.season==season)\
+                                    .first()
+                                
+                    if squad is None:
+                        print_error("Squad does not exist for %s in the \
 season %s! You'll have to fix the DB by hand." \
                             % (last_team.name, season))
-                            exit(23)
-                        # Made it: add player as SquadMember to this Squad
-                        squadmember = SquadMember(player, squad)
+                        exit(23)
+                    # Made it: add player as SquadMember to this Squad
+                    squadmember = SquadMember(player, squad)
+                    
                 else:
+                    # -> Opted not to add player through prompts.
                     print_error("Try to fix database by hand and try again.")
                     exit(24)
 
