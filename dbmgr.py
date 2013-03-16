@@ -52,6 +52,56 @@ import datetime
 
 
 
+
+def get_team_by_player_id(session, pid, season):
+    return session.query(Squad)\
+                  .join(SquadMember)\
+                  .filter(Squad.season==season,
+                          SquadMember.player_id==int(float(pid))).one()
+
+
+
+def get_squad_by_season(session, name, season):
+    if name.startswith('@ '):
+        name = name[2:].strip()
+    elif '@' in name:
+        name = name.partition('@')[0].strip()
+
+    try:
+        return session.query(Squad)\
+                      .join(Team)\
+                      .filter(Team.name==name, Squad.season==season).one()
+            
+    except Exception as e:
+        print "Error getting %s in %s: %s" % (name, season, str(e))
+
+
+
+
+def parse_score(r):
+    p = r.split(' ')
+    ot = None
+    if len(p)>4:
+        ot = int(re.sub(r'[^\d]', '', p[4]))
+    return (p[0],
+            int(re.sub(r'[^\d]', '', p[1])),
+            int(re.sub(r'[^\d]', '', p[3])),
+            ot)
+
+
+
+def get_game(session, date, team, season):
+    p = [int(r) for r in date.split('/')]
+    d = datetime.date(p[2], p[0], p[1])
+    s = get_squad_by_season(session, team, season)
+    return session.query(Game)\
+                  .join(Game.opponents)\
+                  .filter(Game.date==d, Game.opponents.any(id=s.id)).first()
+
+
+
+
+
 def is_yes(input):
     return ((input.strip()+'es').lower())[:3]=='yes'
 
@@ -292,32 +342,47 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(description="Manage NCAA datbase.")
     parser.add_argument('dbname', type=str, metavar='DB',
                         help='path to NCAA database')
+    
     parser.add_argument('-m', '--map', dest='nmap', type=argparse.FileType('r'),
                         metavar='team-names-map', default=None,
                         help='map from team IDs to team name  names')
+    
     parser.add_argument('-a', '--aliases', dest='aliases',
                         metavar='aliases-map',
                         type=argparse.FileType('r'), help='map from team name \
 to variations of this team name', default=None)
+
     parser.add_argument('-p', '--players', dest='players',
                         metavar='players-csv',
                         type=argparse.FileType('r'), help='add players to DB',
                         default=None)
+    
     parser.add_argument('-q', '--quickadd', type=argparse.FileType('r'),
                         metavar='quick-players.csv', help='quickly add players \
 to DB.', default=None, dest='quickadd')
+
     parser.add_argument('-g', '--gamestats', dest='gamestats',
                         metavar='stats-csv',
                         type=argparse.FileType('r'), help='add game stats by \
 player to database', default=None)
+
+    parser.add_argument('-s', '--patchscores', dest='patchscores',
+                        metavar='stats-csv',
+                        type=argparse.FileType('r'), help='make sure scores \
+are stored properly in DB.', default=None)
+    
     parser.add_argument('-r', '--resume', dest='resume', metavar='name',
                         help='Resume entry at given player (last name, first). \
 Can also resume by ID.',
                         default=None)
+
     parser.add_argument('-n', '--new', dest='newgames', help="Only add look \
 at games played after last Game in DB", action='store_true')
+
     parser.add_argument('-y', '--yes', dest='yesall', help="Yes to prompts",
                         action='store_true')
+    
+    
     cli = parser.parse_args()
 
     # Create database engine
@@ -383,10 +448,12 @@ id=%d: `%s`" % (int(entry[1]), old.name))
         # NOTE: no header.
         for line in reader:
             print_comment("Looking at line beginning `%s` ... " % line[0])
+            
             # For each entry in the CSV
             # find the Team to which this line is referring
             refteam = None
             bestmatches = []
+            
             for cell in line:
                 bestmatches.extend(Team.search(session, cell))
 
@@ -397,6 +464,7 @@ id=%d: `%s`" % (int(entry[1]), old.name))
             if len(bestmatches)>0 and bestmatches[0][1] == 1:
                 # If perfect match, select team
                 refteam = bestmatches[0][0]
+            
             else:
                 # If imperfect match (or no matches), display options
                 refteam = team_list_prompt(session, line[0], bestmatches)
@@ -727,7 +795,7 @@ sure that players have all been added to DB and try again.")
                     except:
                         print_warning("No record of this player playing \
 for anyone ever.")
-                        tid = raw_input("Enter team ID:")
+                        tid = raw_input("Enter team ID: ")
                         fail = False
                         
                         try:
@@ -752,6 +820,8 @@ season %s! You'll have to fix the DB by hand." \
                         exit(23)
                     # Made it: add player as SquadMember to this Squad
                     squadmember = SquadMember(player, squad)
+                    session.commit()
+                    clear_below(20, stream=stderr)
                     
                 else:
                     # -> Opted not to add player through prompts.
@@ -882,7 +952,8 @@ team `%s` in season `%s`!" % (opponent_name, season))
                     else:
                         winner = opponent_squad
                         loser = squadmember.squad
-                except:
+                except Exception as e:
+                    print_warning(str(e))
                     pass
                 
                 game_loc = opponent_location
@@ -958,8 +1029,124 @@ team `%s` in season `%s`!" % (opponent_name, season))
         print_success("All finished!")
         # Done iterating through entries in GameStats CSV
     # Done processing GameStats CLI
+    session.commit()
+    # --------------------------------- //
+
+
 
     # --------------------------------- //
+    if cli.patchscores:
+        # Takes same input as cli.gamestats. Makes sure scores and winners are
+        # present.
+        print_header("Patching scores.")
+
+        reader = csv.reader(cli.patchscores)
+        
+        # The first entry is the header entry
+        headers = reader.next()
+        maxlen = len(headers)
+        
+        # Set resume logic parameters
+        resumeat = None
+        resumeat_l = None
+        if cli.resume:
+            resumeat = str(cli.resume).lower()
+            if resumeat.isdigit():
+                # Resume at ID
+                resumeat = int(float(resumeat))
+                resumeat_l = lambda x: int(float(x[0]))
+            else:
+                # Resume at "Last name, First name"
+                resumeat_l = lambda x: x[1].lower()
+
+        # Set date filter logic parameters
+        earliest_date = None
+        date_extractor = lambda x: extract_date(x, 7)
+        if cli.newgames:
+            # Find the earliest date of a Game with no data in the DB
+            e = session.query(func.min(Game.date))\
+                       .filter(Game.winner==None)\
+                       .one()[0]
+            if e is None:
+                # Alternatively, try to get the latest Game for which there
+                # _is_ data.
+                e = session.query(func.max(Game.date))\
+                           .filter(Game.winner!=None)\
+                           .one()[0]
+                if e is None:
+                    # Wut? No Games in DB?
+                    print_warning("Couldn't filter new games. Something might \
+be very wrong with the database. You should check it by hand.")
+            earliest_date = e
+
+        # Set up iteration
+        entries = [line for line in reader]
+        
+        clear(stream=stderr)
+        print_header("Adding game stats to DB")
+        progbar = ProgressBar(max=len(entries), color='green', stream=stdout)
+
+        # Map headers onto DB schema
+        ## NOTE not really necessary now; assume consistent format
+        
+        for entry in entries:
+            progbar.update("%s - %s, %s" % (entry[7], entry[6], entry[8]))
+            # Iterate through lines, adding and connecting things in db
+            # as necessary
+            while len(entry) < maxlen:
+                # Make sure line is of proper length
+                entry.append('')
+        
+            changed = False
+        
+            # -- RESUME LOGIC -- #
+            if resumeat is not None:
+                # Resume entry at given player (Last name, first name)
+                if resumeat_l(entry)==resumeat:
+                    print_comment("Resuming entry.")
+                    resumeat = None
+                else:
+                    print_comment("Skipping forward ...")
+                    continue
+
+            # -- DATE LOGIC -- #
+            if earliest_date is not None:
+                # Don't check entries that come before specified date
+                if date_extractor(entry)<earliest_date:
+                    print_comment("Skipping older Game ... ")
+                    continue
+
+            # Get_game(session, date, team, season)
+            game = get_game(session, entry[7], entry[8], entry[6])
+            
+            # get_team_by_player_id(session, PlayerID, season)
+            t1 = get_team_by_player_id(session, entry[0], entry[6])
+            
+            # get_squad_by_season(session, squadName, season)
+            t2 = get_squad_by_season(session, entry[8], entry[6])
+
+            try:
+                wl, s1, s2, ot = parse_score(entry[9])
+            except Exception as e:
+                print_warning(" -- Can't parse score %s: %s" % (entry[9], e))
+
+            if t1 not in game.opponents or t2 not in game.opponents:
+                print "ERROR in game %s" % str(game)
+                break
+
+            if wl.lower()=='w':
+                game.winner = t1
+                game.loser = t2
+
+            elif wl.lower()=='l':
+                game.winner = t2
+                game.loser = t1
                 
+            game.winner_score = max(s1, s2)
+            game.loser_score = min(s1,s2)
+            game.overtime = ot
+            session.commit()
+        session.commit()
+
             
 
