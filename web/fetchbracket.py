@@ -12,7 +12,7 @@ Freely distributable under the MIT License.
 import cgi
 import json
 import os
-from ncaa import *
+from ncaalib.ncaa import *
 
 
 # Get GET

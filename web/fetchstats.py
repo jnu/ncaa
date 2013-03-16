@@ -12,7 +12,7 @@ Freely distributable under the MIT License.
 import cgi
 import json
 import os
-from ncaa import *
+from ncaalib.ncaa import *
 
 
 # Get GET
@@ -53,8 +53,8 @@ elif not er:
         ret['stats']['rpi'] = e.rpi
         ret['stats']['wp'] = e.win_pct(weighted=False)
         ret['stats']['wwp'] = e.win_pct(weighted=True)
-        ret['stats']['wins'] = len(e.wins)
-        ret['stats']['losses'] = len(e.losses)
+        ret['stats']['wins'] = len(e.get_wins())
+        ret['stats']['losses'] = len(e.get_losses())
 
     else:
         # Nothing else supported so far
