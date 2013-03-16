@@ -81,11 +81,7 @@ if __name__=='__main__':
         # Extract features and compile sample
         ft = extract_features(*opponents)
         sample.append((ft, str(winner),))
-
-    # Just in case anything was calculated during the game pulling,
-    # committing will cache these calculations to expedite future analysis.
-    print_good("Commiting calculated stats to db")
-    session.commit()
+    
 
     print_info("Creating and normalizing data set ...")
     # Create DataSet
@@ -168,8 +164,5 @@ if __name__=='__main__':
             's' : s,
         }
 
-    # Simulation might have had side-effect calculations, so cache them.
-    print_good("Saving derived stats to DB")
-    session.commit()
 
     print_success("Demo finished successfully.")
