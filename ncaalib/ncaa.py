@@ -691,12 +691,20 @@ class Squad(Base):
             l = away_losses * away_loss_weight \
                 + home_losses * home_loss_weight \
                 + neutral_losses
-        
-        return w / (w+l)
     
-    def opponents(self, played=True, postseason=False):
+        try:
+            return w / (w+l)
+        except Exception as e:
+            # Divide by zero error happens when squad has no data
+            return None
+    
+    def opponents(self, played=True, postseason=False, cache=True):
         '''Get opponents. If played is True, only get opponents in games that
         have been played so far. By default exclude postseason games.'''
+        _cachekey = 'opponents%s%s' % (played, postseason)
+        if cache and self._cache.has_key(_cachekey):
+            return self._cache[_cachekey]
+        
         sched = self.schedule
         if played:
             sched = self.wins + self.losses
@@ -704,28 +712,34 @@ class Squad(Base):
         if not postseason:
             sched = [gm for gm in sched if not gm.postseason]
             
-        return [op for op in sum([gm.opponents for gm in sched], [])
+        ret = [op for op in sum([gm.opponents for gm in sched], [])
                 if op is not self]
+
+        if cache:
+            self._cache[_cachekey] = ret
+
+        return ret
     
     def _owp(self):
         '''Opponents winning percentage'''
-        w = sum([len(op.get_wins(cache=True)) for op in self.opponents()], 0.)
-        l = sum([len(op.get_losses(cache=True)) for op in self.opponents()], 0.)
+        w = sum([len(op.get_wins()) for op in self.opponents()], 0.)
+        l = sum([len(op.get_losses()) for op in self.opponents()], 0.)
         return w / (w+l)
 
     def _oowp(self):
         '''Opponents' opponents' winning percentage'''
         oops = sum([op.opponents() for op in self.opponents()], [])
-        w = sum([len(oop.get_wins(cache=True)) for oop in oops], 0.)
-        l = sum([len(oop.get_losses(cache=True)) for oop in oops], 0.)
+        w = sum([len(oop.get_wins()) for oop in oops], 0.)
+        l = sum([len(oop.get_losses()) for oop in oops], 0.)
         return w / (w+l)
 
-    def get_wins(self, postseason=False, cache=False):
+    def get_wins(self, postseason=False, cache=True):
         '''Get wins, optionally including postseason. Set cache=True to read
         from / write to transient instance cache instead of recalculating
         value each time it is needed.'''
-        if cache and self._cache.has_key('wins'):
-            return self._cache['wins']
+        _cachekey = 'wins%s' % postseason
+        if cache and self._cache.has_key(_cachekey):
+            return self._cache[_cachekey]
 
         wins = []
         if postseason:
@@ -734,16 +748,17 @@ class Squad(Base):
             wins = [g for g in self.wins if not g.postseason]
         
         if cache:
-            self._cache['wins'] = wins
+            self._cache[_cachekey] = wins
 
         return wins
 
-    def get_losses(self, postseason=False, cache=False):
+    def get_losses(self, postseason=False, cache=True):
         '''Get losses, optionally including postseason. Set cache=True to
         read from / write to transient instance cache instead of recalculating
         value each time it is needed.'''
-        if cache and self._cache.has_key('losses'):
-            return self._cache['losses']
+        _cachekey = 'losses%s' % postseason
+        if cache and self._cache.has_key(_cachekey):
+            return self._cache[_cachekey]
         
         losses = []
         if postseason:
@@ -752,7 +767,8 @@ class Squad(Base):
             losses = [g for g in self.losses if not g.postseason]
 
         if cache:
-            self._cache['losses'] = losses
+            self._cache[_cachekey] = losses
+            
         return losses
     
     def get_rpi(self):
