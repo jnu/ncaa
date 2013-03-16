@@ -593,11 +593,13 @@ class Squad(Base):
 
     def __init__(self, season, team=None):
         self.season = season
+        self._cache = dict()        # Cache is never persisted.
         if team is not None:
             self.team = team
     
     @reconstructor
     def _reconstruct(self):
+        self._cache = dict()        # Cache is never persisted.
         if self.stats is None:
             self.derive_stats()
     
@@ -636,7 +638,7 @@ class Squad(Base):
             # Create new record
             self.stats = SquadDerivedStats(derived_stats)
     
-    def win_pct(self, weighted=False):
+    def win_pct(self, weighted=False, postseason=False):
         '''Calculate win percentage. Weighted win pct multiplies home wins
         by .6, home losses by 1.4, away wins by 1.4 and away losses by .6.'''
         w = float(len(self.wins))
@@ -653,7 +655,13 @@ class Squad(Base):
         
             for game in self.schedule:
                 if game.winner is None:
+                    # Skip unplayed games
                     continue
+                
+                if not postseason and game.postseason:
+                    # Skip postseason games if specified
+                    continue
+                
                 op = [s for s in game.opponents if s is not self][0]
                 opname = op.team.name
                 
@@ -686,27 +694,66 @@ class Squad(Base):
         
         return w / (w+l)
     
-    def opponents(self, played=True):
+    def opponents(self, played=True, postseason=False):
         '''Get opponents. If played is True, only get opponents in games that
-        have been played so far. Otherwise get all of them.'''
+        have been played so far. By default exclude postseason games.'''
         sched = self.schedule
         if played:
             sched = self.wins + self.losses
+        
+        if not postseason:
+            sched = [gm for gm in sched if not gm.postseason]
+            
         return [op for op in sum([gm.opponents for gm in sched], [])
                 if op is not self]
     
     def _owp(self):
         '''Opponents winning percentage'''
-        w = sum([len(op.wins) for op in self.opponents()], 0.)
-        l = sum([len(op.losses) for op in self.opponents()], 0.)
+        w = sum([len(op.get_wins(cache=True)) for op in self.opponents()], 0.)
+        l = sum([len(op.get_losses(cache=True)) for op in self.opponents()], 0.)
         return w / (w+l)
 
     def _oowp(self):
         '''Opponents' opponents' winning percentage'''
         oops = sum([op.opponents() for op in self.opponents()], [])
-        w = sum([len(oop.wins) for oop in oops], 0.)
-        l = sum([len(oop.losses) for oop in oops], 0.)
+        w = sum([len(oop.get_wins(cache=True)) for oop in oops], 0.)
+        l = sum([len(oop.get_losses(cache=True)) for oop in oops], 0.)
         return w / (w+l)
+
+    def get_wins(self, postseason=False, cache=False):
+        '''Get wins, optionally including postseason. Set cache=True to read
+        from / write to transient instance cache instead of recalculating
+        value each time it is needed.'''
+        if cache and self._cache.has_key('wins'):
+            return self._cache['wins']
+
+        wins = []
+        if postseason:
+            wins = self.wins
+        else:
+            wins = [g for g in self.wins if not g.postseason]
+        
+        if cache:
+            self._cache['wins'] = wins
+
+        return wins
+
+    def get_losses(self, postseason=False, cache=False):
+        '''Get losses, optionally including postseason. Set cache=True to
+        read from / write to transient instance cache instead of recalculating
+        value each time it is needed.'''
+        if cache and self._cache.has_key('losses'):
+            return self._cache['losses']
+        
+        losses = []
+        if postseason:
+            losses = self.losses
+        else:
+            losses = [g for g in self.losses if not g.postseason]
+
+        if cache:
+            self._cache['losses'] = losses
+        return losses
     
     def get_rpi(self):
         '''Calculate RPI.'''
