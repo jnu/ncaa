@@ -694,7 +694,7 @@ class Squad(Base):
     
         try:
             return w / (w+l)
-        except Exception as e:
+        except ZeroDivisionError as e:
             # Divide by zero error happens when squad has no data
             return None
     
@@ -724,14 +724,20 @@ class Squad(Base):
         '''Opponents winning percentage'''
         w = sum([len(op.get_wins()) for op in self.opponents()], 0.)
         l = sum([len(op.get_losses()) for op in self.opponents()], 0.)
-        return w / (w+l)
+        try:
+            return w / (w+l)
+        except ZeroDivisionError as e:
+            return None
 
     def _oowp(self):
         '''Opponents' opponents' winning percentage'''
         oops = sum([op.opponents() for op in self.opponents()], [])
         w = sum([len(oop.get_wins()) for oop in oops], 0.)
         l = sum([len(oop.get_losses()) for oop in oops], 0.)
-        return w / (w+l)
+        try:
+            return w / (w+l)
+        except ZeroDivisionError as e:
+            return None
 
     def get_wins(self, postseason=False, cache=True):
         '''Get wins, optionally including postseason. Set cache=True to read
