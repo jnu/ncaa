@@ -28,6 +28,8 @@ def extract_features(squad1, squad2):
         'fgb'  : squad2.stats.field_goal_avg,
         'rpia' : squad1.rpi,
         'rpib' : squad2.rpi,
+        'lsa'  : squad1.lsalpha,
+        'lsb'  : squad2.lsalpha,
         'reba' : squad1.stats.rebounds_avg,
         'rebb' : squad2.stats.rebounds_avg,
         'assa' : squad1.stats.assists_avg,
@@ -41,8 +43,11 @@ def extract_features(squad1, squad2):
         'ptsa' : squad1.stats.points_avg,
         'ptsb' : squad2.stats.points_avg,
     }
+    if r['lsa'] is None or r['lsb'] is None:
+        r['lsa'] = r['lsb'] = 100.
     return {
         'fg' : r['fga'] - r['fgb'],
+        'ls' : r['lsa'] - r['lsb'],
         'rpi': r['rpia'] - r['rpib'],
         'reb': r['reba'] - r['rebb'],
         'ass': r['assa'] - r['assb'],
