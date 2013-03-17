@@ -586,6 +586,7 @@ class Squad(Base):
     # NOTE wins = one-to-many map to Games
     # NOTE losses = one-to-many map to Games
 
+    lsalpha = Column(Float)
     rpi = Column(Float)
     seed = Column(Integer)
     conference = Column(String)
@@ -738,6 +739,29 @@ class Squad(Base):
             return w / (w+l)
         except ZeroDivisionError as e:
             return None
+
+    def get_games(self, postseason=False, played=True, cache=True):
+        '''Get games, optionally including postseason games. Set cache=True
+        to read from / write to transient instance cache instead of
+        recalculating this value each time it is needed. Cache is sensitive
+        to the parameters you pass.'''
+        _cachekey = 'games%s%s' % (postseason, played)
+        if cache and self._cache.has_key(_cachekey):
+            return self._cache[_cachekey]
+
+        games = []
+        if postseason:
+            games = self.schedule
+        else:
+            games = [g for g in self.schedule if not g.postseason]
+        
+        if played:
+            games = [g for g in games if g.winner is not None]
+        
+        if cache:
+            self._cache[_cachekey] = games
+        
+        return games
 
     def get_wins(self, postseason=False, cache=True):
         '''Get wins, optionally including postseason. Set cache=True to read
