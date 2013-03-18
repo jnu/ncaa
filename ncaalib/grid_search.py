@@ -23,7 +23,7 @@ https://github.com/scikit-learn/scikit-learn/blob/master/sklearn/grid_search.py
 on March 17. 2013.
 '''
 __author__="Joseph Nudell"
-__date__="March 17, 2013"
+__date__="March 18, 2013"
 
 
 from ncaa import *
@@ -31,8 +31,6 @@ from aux.output import print_warning
 try:
     from sklearn.grid_search import ParameterGrid
 except ImportError:
-    print_warning("Can't find ParameterGrid. Using \
-(deprecated) IterGrid instead ...")
     from sklearn.grid_search import IterGrid as ParameterGrid
 from sklearn.utils.validation import _num_samples, check_arrays
 from sklearn.externals.joblib import Parallel, delayed, logger
