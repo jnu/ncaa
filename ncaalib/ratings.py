@@ -65,10 +65,11 @@ class SquadRater(object):
         self.squads = self._get_squads()
 
     def _get_squads(self):
+        '''Get squads who played games in the given season.'''
         squads = self._session.query(Squad)\
                      .filter(Squad.season==self.season)\
                      .all()
-        return squads
+        return [squad for squad in squads if len(squad.get_games())>0]
 
     def rate(self):
         '''Subclasses must implement this method.'''
@@ -189,13 +190,13 @@ if __name__=='__main__':
 
     # Load least squares rater
     print_info("Loading test of LeastSquaresRater on 2011-12")
-    lsrater = LeastSquaresRater(session, '2011-12')
+    ls12 = LeastSquaresRater(session, '2011-12')
     print_comment("Rating & mutating... ")
-    lsrater.rate(mutate=True)
+    ls12.rate(mutate=True)
 
     print_comment("Same for 2009-10")
     ls10 = LeastSquaresRater(session, '2009-10')
-    lsrater.rate(mutate=True)
+    ls10.rate(mutate=True)
 
     print_comment("Same for 2010-11")
     ls11 = LeastSquaresRater(session, '2010-11')
