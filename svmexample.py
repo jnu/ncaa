@@ -10,9 +10,10 @@ Copyright (c) 2013 Joseph Nudell
 
 from ncaalib.ncaa import *
 from ncaalib.data import *
+from ncaalib.grid_search import GridSearch, TournamentScorer
 from ncaalib.aux.output import *
 from sklearn.svm import SVC
-from sklearn.grid_search import GridSearchCV
+
 
 
 # Define a feature extractor
@@ -56,6 +57,7 @@ def extract_features(squad1, squad2):
         'blk': r['blksa'] - r['blksb'],
         'pts': r['ptsa'] - r['ptsb'],
     }
+    #return r
 
 
 
@@ -107,8 +109,14 @@ if __name__=='__main__':
         }
     ]
 
-    classifier = GridSearchCV(SVC(probability=True), grid,
-                                verbose=3, refit=True, cv=5, n_jobs=4)
+    tourny_years = ['2009-10', '2010-11', '2011-12']
+    scorer = TournamentScorer(session,
+                              lambda *g: data.convert(extract_features(*g)),
+                              seasons=tourny_years,
+                              normalize=data.normalize)
+
+    classifier = GridSearch(SVC(probability=True), grid, scoring=scorer,
+                            verbose=3, refit=True, n_jobs=1)
 
     # Train classifier
     print_info("Searching for optimal classifier ...")
@@ -124,7 +132,6 @@ if __name__=='__main__':
 
 
     # REAL WORLD TESTS: Simulate tournaments.
-    tourny_years = ['2009-10', '2010-11', '2011-12']
     simdata = dict()
 
     for season in tourny_years:
