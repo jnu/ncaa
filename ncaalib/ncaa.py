@@ -988,22 +988,27 @@ class Tournament(Base):
     rounds_store = Column(String) 
     delim = Column(String)
     season = Column(String)
+    playin = Column(String)
     
     # Transient default scores for pointsmap - not saved in DB
     # Converted to pointsmap based on round names in _reconstruct().
     # Ordered from Championship (0th element) to 1st round (5th element).
     # This is the default value; it's the system used by ESPN.
-    roundpoints = [320, 160, 80, 40, 20, 10]
+    roundpoints = [320, 160, 80, 40, 20, 10, 0]
 
     # Note: games = many-to-one relationship to Tournament.games
 
     def __init__(self, season,
                  regions=['North', 'East', 'South', 'West'],
-                 rounds=None, delim='/'):
+                 rounds=None, delim='/', playin=True):
 
         self.season = season
         self.regions_store = '|'.join(regions)
         self.regions = regions # transient
+        if playin:
+            self.playin = 'playin' if type(playin) is bool else str(playin)
+        else:
+            self.playin = None
         
         self.delim = delim
 
@@ -1018,6 +1023,8 @@ class Tournament(Base):
         if self.rounds_store is None:
             self.rounds = ['finals', 'finalfour',
                             'elite8', 'sweet16', '2nd', '1st']
+            if self.playin is not None:
+                self.rounds.append(self.playin)
         else:
             self.rounds = self.rounds_store.split('|')
 
@@ -1122,7 +1129,15 @@ class Tournament(Base):
         in Game.opponents of the given Game of the winner.'''
         for tgame in self:
             if len(tgame.opponents)!=2:
-                raise IndexError
+                # Make sure game has right number of opponents
+                if self.playin and log2(tgame.index+1)==len(self.rounds)-1:
+                    # In playin round
+                    if len(tgame.opponents)==0:
+                        # This is OK. PlayIn round is not complete
+                        continue
+                raise IndexError("%s opponents in game %d" \
+                                    % (len(tgame.opponents), tgame.index))
+        
             r = decide(tgame)
             if type(r) is Game:
                 tgame = r
@@ -1141,7 +1156,7 @@ class Tournament(Base):
                 tgame.winner = tgame.opponents[i]
                 tgame.loser = tgame.opponents[(i+1)%2]
             else:
-                raise NotImplementedError("Unsupported return type %s"\
+                raise NotImplementedError("Unsupported sim return type %s"\
                                             % type(r))
 
             nextroundgame = tgame.next()
@@ -1150,16 +1165,6 @@ class Tournament(Base):
                 nextroundgame.opponents.append(tgame.winner)
 
     def __iter__(self):
-        class TournamentIterator(object):
-            def __init__(self, m):
-                self.__o = m
-                self.index = len(m)
-
-            def next(self):
-                if self.index==0:
-                    raise StopIteration
-                self.index -= 1
-                return self.__o.get_by_id(self.index)
         return TournamentIterator(self)
 
     def __len__(self):
@@ -1172,21 +1177,32 @@ class Tournament(Base):
         '''Return a clone of this Tournament that has not been filled out,
         except for the first round. Designate its moniker.'''
         if name is None:
-            name = "%s-empty-%d" % (self.season, randint(0,1000000))
+            name = "%s-empty-%d" % (self.season, randint(0, 1000000))
         
         newtourny = Tournament(name, rounds=self.rounds, regions=self.regions,
-                               delim='/')
+                               delim='/', playin=self.playin)
         # Get index - start of first round
-        fr_start = self.index('1st')
+        fr_start = self.index(self.rounds[-2 if self.playin else -1])
         # Iterate to end of Tournament, copy TournamentGame opponents
         for i in range(fr_start, len(self)):
             newtourny[i].opponents = [t for t in self[i].opponents]
+
+        # If there's a playin round, make playin round winners unknown
+        if self.playin is not None:
+            pl_start = self.index(self.rounds[-1])
+            for i in range(pl_start, len(self)):
+                ops = newtourny[i].opponents
+                if len(ops)==2:
+                    # This play-in game is filled (this round is mostly empty)
+                    fr_ops = newtourny[i].next().opponents
+                    newtourny[i].next().opponents = [s for s in fr_ops
+                                                        if s not in ops]
     
         # Return new Tournament
         return newtourny
         
 
-    def export(self, format='heap'):
+    def export(self, format='heap', meta=None):
         '''Serialize tournament. Supports to methods of serialization. First
         is essentially a copy of the heap. Second is a nested tree. By default
         outputs heap.'''
@@ -1203,6 +1219,10 @@ class Tournament(Base):
             'nodes' : []
         }
         
+        if meta:
+            # Misc data to be included with output. E.g., clf hyperparams.
+            output['meta'] = meta
+        
         if hasattr(self, '_correctedAgainst'):
             # Give ID of tournament used to correct bracket, if corrected
             output['correctedAgainst'] = self._correctedAgainst
@@ -1211,10 +1231,10 @@ class Tournament(Base):
             # Used to specify consistent structure of nodes.
             node = {
                 'id' : id_,
-                'name' : squad.team.name,
+                'name' : squad.team.name if squad is not None else None,
                 'data' : {
-                    'sid' : squad.id,
-                    'seed' : squad.seed,
+                    'sid' : squad.id if squad is not None else None,
+                    'seed' : squad.seed if squad is not None else None,
                     'points' : score
                 },
             }
@@ -1234,8 +1254,21 @@ class Tournament(Base):
                 heap.append(_createNode(i, self[i].winner,
                                         self[i].winner_score))
 
-            first_round_id = log2(len(self))-1
+            first_round_id = self.index(self.rounds[-2 if self.playin else -1])
             for i in range(first_round_id, len(self)):
+                if len(self[i].opponents)==0:
+                    # playin game
+                    for x in [0,1]:
+                        heap.append(_createNode((i<<1)+1+x, None, None))
+                    continue
+                
+                elif len(self[i].opponents)==1:
+                    # Opponent in playin game
+                    heap.append(_createNode((i<<1)+1, self[i].opponents[0],
+                                None))
+                    heap.append(_createNode((i<<1)+2, None, None))
+                    continue
+                    
                 # Iterate through 1st round games and add opponents (and their
                 # scores and stuff) to heap. Order by seed.
                 ops = sorted(self[i].opponents,
@@ -1256,6 +1289,9 @@ class Tournament(Base):
         elif format=='nested':
             # Javascript Infovis Toolkit (JSON)
             # Root at Champion.
+            
+            fr_id = self.index(self.rounds[-2 if self.playin else -1])
+            fr_id = ((fr_id+1)<<1) - 1
 
             def _maketree(n=0, prev=None):
                 # Build tree recursively
@@ -1263,11 +1299,14 @@ class Tournament(Base):
                 children = []
                 score = None
                 
-                if n >= len(self):
-                    # Leaf node - order by Seed. Use higher one when n is odd.
-                    ops = sorted(self[prev].opponents,
-                                 key=lambda a: a.seed, reverse=True)
-                    currentsquad = ops[n%2]
+                if n >= fr_id:
+                    if len(self[prev].opponents)==0:
+                        currentsquad = None
+                    else:
+                        # Leaf node - order by Seed: higher one when n is odd.
+                        ops = sorted(self[prev].opponents,
+                                     key=lambda a: a.seed, reverse=True)
+                        currentsquad = ops[n%2]
                 else:
                     # Intermediate node (winner of game at self[n])
                     currentsquad = self[n].winner
@@ -1332,8 +1371,6 @@ to unknown round %s" % (val, key))
 
         return self.points
         
-    
-
     def correct(self, realtourny):
         '''Correct this Tournament based on actual results Tournament.
         Sets the 'accurate' attribute on TournamentGames to True if correct,
@@ -1345,6 +1382,21 @@ to unknown round %s" % (val, key))
                 self[i].accurate = None
             else:
                 self[i].accurate = realtourny[i].winner == self[i].winner
+
+
+
+# - TournamentIterator -- /
+class TournamentIterator(object):
+    def __init__(self, m):
+        self.__o = m
+        self.index = len(m.games)
+
+    def next(self):
+        if self.index==0:
+            raise StopIteration
+        self.index -= 1
+        return self.__o.games[self.index]
+
 
 
 
@@ -1479,8 +1531,6 @@ if __name__=='__main__':
     if len(argv)!=2:
         print >>stderr, "Need to specify path to DB"
         exit(1)
-    engine = create_engine('sqlite:///%s'%argv[1])
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = load_db(argv[1])
 
     print >>stderr, "\033[92mSession stored in `session` variable.\033[0m"
