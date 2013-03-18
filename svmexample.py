@@ -109,7 +109,7 @@ if __name__=='__main__':
         }
     ]
 
-    tourny_years = ['2009-10', '2011-12'] #'2010-11', '2011-12']
+    tourny_years = ['2009-10', '2010-11', '2011-12']
     scorer = TournamentScorer(session,
                               lambda *g: data.convert(extract_features(*g)),
                               seasons=tourny_years,

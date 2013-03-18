@@ -243,7 +243,7 @@ class GridSearch(object):
     def __init__(self, classifier, grid,
                        seasons=['2009-10', '2010-11', '2011-12'], verbose=1,
                        refit=False, pre_dispatch='2*n_jobs',
-                       n_jobs=1, scoring=None, fit_params=None):
+                       n_jobs=1, scoring=None, fit_params=None, **kwargs):
         self.verbose = verbose
         self.refit = refit
         self.seasons = seasons
@@ -251,6 +251,8 @@ class GridSearch(object):
         self.grid = ParameterGrid(grid)
         self.pre_dispatch = pre_dispatch
         self.n_jobs = n_jobs
+        if scoring is None:
+            raise ArgumentError("You have to specify `scoring` parameter")
         self.scoring = scoring
         self.fit_params = fit_params if fit_params is not None else {}
     
