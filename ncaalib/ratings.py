@@ -185,30 +185,31 @@ if __name__=='__main__':
     if len(argv)!=2:
         print_error("Have to specify database to connect to!")
         exit(54)
-    # Test
+    
+    # Tests here really just recalculate and update the least squares ratings
+    # in the database because I'm lazy.
     session = load_db(argv[1])
 
-    # Load least squares rater
-    print_info("Loading test of LeastSquaresRater on 2011-12")
-    ls12 = LeastSquaresRater(session, '2011-12')
-    print_comment("Rating & mutating... ")
-    ls12.rate(mutate=True)
 
-    print_comment("Same for 2009-10")
-    ls10 = LeastSquaresRater(session, '2009-10')
-    ls10.rate(mutate=True)
+    print_info("Calculating least squares ratings on all available years ...")
 
-    print_comment("Same for 2010-11")
-    ls11 = LeastSquaresRater(session, '2010-11')
-    ls11.rate(mutate=True)
+    seasons = ['2009-10', '2010-11', '2011-12', '2012-13']
 
-    print_comment("Same for current season")
-    ls13 = LeastSquaresRater(session, '2012-13')
-    ls13.rate(mutate=True)
+    # Save raters by season for use in interactive mode
+    raters = dict()
+
+    for season in seasons:
+        print_comment("  * %s ... " % season)
+        lsr = LeastSquaresRater(session, season)
+        lsr.rate(mutate=True)
+        print_good("     - done!")
+        raters[season] = lsr
 
     print_success("Graphed and rated all teams in all available season.")
     print_comment("Saving changes to database ... ")
+
     session.commit()
+
     print_success("Done!")
 
 
