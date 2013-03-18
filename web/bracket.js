@@ -104,8 +104,14 @@ function Bracket(params) {
 			var that = this;
 			
 			// Store meta information from data
-			this.rounds = data.rounds.length;
-			this.roundLabels = data.rounds;
+			if(data.rounds[data.rounds.length-1].toLowerCase()=='playin') {
+				this.rounds = data.rounds.length - 1;
+				this.roundLabels = data.rounds.slice(0, this.rounds);
+			}else{
+				this.rounds = data.rounds.length;
+				this.roundLabels = data.rounds;
+			}
+			
 			this.regions = data.regions;
 			this.season = data.season;
 			
@@ -945,6 +951,7 @@ function Popup(master, teamOneId, teamTwoId) {
 		data      : [],
 		labels    : {
 			"rpi"			        : "Naïve Strength of Schedule (RPI)",
+			"ls"					: "Least Squares Rating",
 			"wins"				    : "Wins",
 			"losses"				: "Losses",
 			"wp"					: "Unweighted Winning %",
