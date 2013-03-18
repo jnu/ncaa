@@ -72,6 +72,7 @@ from sqlalchemy.orm import relationship, backref, sessionmaker, reconstructor
 from sqlalchemy.ext.declarative import declarative_base
 # Standard Library
 import re
+import os
 import json
 import datetime
 import operator
@@ -1517,7 +1518,9 @@ def fuzzy_match_team(session, name, threshold=.9, matcher=fuzzymatch):
 
 def load_db(path):
     '''Convenience function to make an engine and create a session. Returns
-    new session.'''
+    new session. Will raise IOError if path does not exist.'''
+    if not os.path.exists(path):
+        raise IOError("No database exists at specified path: %s" % path)
     engine = create_engine('sqlite:///%s'%path)
     Session = sessionmaker(bind=engine)
     return Session()
