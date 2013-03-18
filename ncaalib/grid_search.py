@@ -27,7 +27,13 @@ __date__="March 17, 2013"
 
 
 from ncaa import *
-from sklearn.grid_search import ParameterGrid
+from aux.output import print_warning
+try:
+    from sklearn.grid_search import ParameterGrid
+except ImportError:
+    print_warning("Can't find ParameterGrid. Using \
+(deprecated) IterGrid instead ...")
+    from sklearn.grid_search import IterGrid as ParameterGrid
 from sklearn.utils.validation import _num_samples, check_arrays
 from sklearn.externals.joblib import Parallel, delayed, logger
 from sklearn.base import clone
