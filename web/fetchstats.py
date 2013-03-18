@@ -51,6 +51,7 @@ elif not er:
         # Place stats object in return dict
         ret['stats'] = dict(e.stats.items())
         ret['stats']['rpi'] = e.rpi
+        ret['stats']['ls'] = e.lsalpha if hasattr(e, 'lsalpha') else ''
         ret['stats']['wp'] = e.win_pct(weighted=False)
         ret['stats']['wwp'] = e.win_pct(weighted=True)
         ret['stats']['wins'] = len(e.get_wins())
