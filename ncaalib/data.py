@@ -35,6 +35,9 @@ class Normalizer(object):
         self.maxes = OrderedDict()
         self.mins = OrderedDict()
         self.method = method
+        
+        if method not in ['standardize', 'rescale']:
+            raise ValueError("Unsupported normalization method %s" % method)
     
         if type(train_set) is list:
             # NLTK Format
