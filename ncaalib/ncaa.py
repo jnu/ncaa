@@ -1423,18 +1423,22 @@ class GameDecider(object):
                 self.method = getattr(classifier, 'classify')
             elif hasattr(classifier, 'predict'):
                 self.method = getattr(classifier, 'predict')
+                self.proba_method = getattr(classifier, 'predict_proba')
             else:
                 raise TypeError("Unsure what method to call on classifer")
         else:
             self.method = getattr(classifier, method)
 
-    def __call__(self, game):
+    def __call__(self, game, prob=False):
         '''Extract features from given Game, then classify.
         Also normalizes if you're into that.'''
         ft = self.extractor(*game.opponents)
         if self.normalize is not None:
             ft = self.normalize(ft)
-        p = self.method(ft)
+        if prob:
+            p = self.proba_method(ft)
+        else:
+            p = self.method(ft)
         return p
 
 
