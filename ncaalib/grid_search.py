@@ -81,22 +81,32 @@ class ExtractedTournament(object):
     '''Analogous to Tournament in ncaa module, but not connected to database.
     Optimized for repeatedly performing simulations. Used in grid searches
     for maximizing expected Tournament score.'''
-    def __init__(self, tournament):
+    def __init__(self, tournament, scoring=None):
         self.games = [ExtractedTournamentGame(tg) for tg in tournament.games]
         self.key = [tg.winner.id for tg in self.games]
-        self.scoremap = [320, 160, 80, 40, 20, 10]
+        
+        if scoring is None:
+            self.scoremap = tournament.roundpoints
+        else:
+            self.scoremap = scoring
+            
         self._gtype = type(self.games[0])
         self._stype = type(self.games[0].opponents[0])
+        self._predicted_ids = None
     
     def __iter__(self):
         return TournamentIterator(self)
     
     def score(self):
+        pkey = []
         s = 0
         for i, game in enumerate(self.games):
-            if self.key[i]==game.winner.id:
+            id_ = game.winner.id
+            if self.key[i]==id_:
                 round_ = log2(i+1)
                 s += self.scoremap[round_]
+            pkey.append(id_)
+        self._predicted_ids = pkey
         return s
 
     def clear_bracket(self):
@@ -107,6 +117,19 @@ class ExtractedTournament(object):
         for i in range(len(self.games)-1, sr_id-1, -1):
             self.games[i].winner = None
             self.games[i].loser = None
+
+    def correct_in_round(self, k):
+        '''Return % correctly predicted winners in round k'''
+        game_ids = range((1<<k)-1, (1<<(k+1))-1)
+        den = float(len(game_ids))
+        key = self.key
+        
+        if self._predicted_ids is None:
+            self.score()
+        
+        pids = self._predicted_ids
+        
+        return sum([key[i]==pids[i] for i in game_ids], 0.) / den
     
     def test(self, decider):
         self.clear_bracket()
@@ -346,10 +369,24 @@ class GridSearch(object):
 
 
 class TournamentScorer(object):
-    '''Scorer object that returns the average score of the given estimator 
-    on past Tournaments.'''
+    '''Scorer object that validates a model based on its performance in
+    predicting past tournaments. By default it evaluates the model's overall
+    score in a past tournament. Can also specify round_ parameter to maximize
+    accuracy on a particular round or, by passing an iterable, set of rounds.
+    Rounds must be specified by an integer, with 0 being Championship and 5
+    being the First Round. Accuracy is evaluated by number of winners correctly
+    predicted divided by games played. This means for example if you want to
+    maximize the number of Final Fourists correctly predicted, you need to
+    set round_ to 2, which is actually the ID of the Elite 8.
+    
+    In maximizing overall bracket score, you can specify the scoring parameter
+    to provide a specific number of points to rounds (again, with the 0th item
+    being the Championship and 5th being the Round of 64). By default the
+    ESPN scoring system which assigns 320 max points to each round is used.'''
     def __init__(self, session,
                        extractor,
+                       round_ = None,
+                       scoring = None,
                        seasons=['2009-10', '2010-11', '2011-12'],
                        normalize=None, method=None,
                        greater_is_better=True):
@@ -358,12 +395,31 @@ class TournamentScorer(object):
         self._session = session
         self.extractor = extractor
         self.normalize = normalize
+        
+        try:
+            # Is round_ iterable?
+            it = iter(round_)
+        except TypeError:
+            # Nope, not iterable
+            if type(round_) is int:
+                # Make a list from the int
+                self.round_ = [round_]
+            else:
+                raise TypeError("Unknown round_ type: %s (%s)" \
+                                    % (str(round_), type(round_)))
+        else:
+            # round_ is iterable
+            self.round_ = round_
+        
+        if round_ is not None:
+            self._rounds_frac = 1. / float(len(self.round_))
+        
         self.method = method
         self.greater_is_better = greater_is_better
         tournaments = session.query(Tournament)\
                              .filter(Tournament.season.in_(seasons))\
                              .all()
-        self.tournaments = [ExtractedTournament(t) for t in tournaments]
+        self.tournaments = [ExtractedTournament(t,scoring) for t in tournaments]
         self._len = float(len(self.tournaments))
         self._frac = 1. / self._len
 
@@ -374,8 +430,20 @@ class TournamentScorer(object):
         should just be ignored.'''
         decider = GameDecider(estimator, self.extractor,
                               normalize=self.normalize, method=self.method)
+        round_ = self.round_
+        trns = self.tournaments
+        f = self._frac
+        rf = self._rounds_frac
+        
+        s = sum([f * t.test(decider) for t in trns])
 
-        return sum([self._frac*t.test(decider) for t in self.tournaments])
+        if round_ is None:
+            return s
+        else:
+            return sum([f * rf * t.correct_in_round(r)
+                                                    for t in trns
+                                                            for r in round_])
+            
 
 
 
