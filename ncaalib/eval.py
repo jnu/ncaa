@@ -180,7 +180,9 @@ class TournamentScorer(object):
                        greater_is_better=True):
         
         self.seasons = seasons
-        self._session = session
+        #self._session = session   # NOTE: Don't save session, otherwise
+                                   # object will not be picklable (and so
+                                   # it can't be parallelized)
         self.extractor = extractor
         self.normalize = normalize
         
