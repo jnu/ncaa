@@ -111,13 +111,18 @@ if __name__=='__main__':
     ]
 
     tourny_years = ['2009-10', '2010-11', '2011-12']
+
+    # Make a closure for converting and extracting stats
+    def _extract_and_convert(*g):
+        return data.convert(extract_features(*g))
+
     scorer = TournamentScorer(session,
-                              lambda *g: data.convert(extract_features(*g)),
+                              _extract_and_convert,
                               seasons=tourny_years,
                               normalize=data.normalize)
 
     classifier = GridSearchCV(SVC(probability=True), grid, scoring=scorer,
-                              verbose=2, refit=True, n_jobs=1, cv=4)
+                              verbose=2, refit=True, n_jobs=-1, cv=4)
 
     # Train classifier
     print_info("Searching for optimal classifier ...")
