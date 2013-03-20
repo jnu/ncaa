@@ -192,6 +192,9 @@ class TournamentScorer(object):
             if type(round_) is int:
                 # Make a list from the int
                 self.round_ = [round_]
+            elif round_ is None:
+                self.round_ = round_
+                self._rounds_frac = 1.
             else:
                 raise TypeError("Unknown round_ type: %s (%s)" \
                                     % (str(round_), type(round_)))
