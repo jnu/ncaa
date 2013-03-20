@@ -10,9 +10,10 @@ Copyright (c) 2013 Joseph Nudell
 
 from ncaalib.ncaa import *
 from ncaalib.data import *
-from ncaalib.grid_search import GridSearch, TournamentScorer
+from ncaalib.eval import TournamentScorer
 from ncaalib.aux.output import *
 from sklearn.svm import SVC
+from sklearn.grid_search import GridSearchCV
 
 
 
@@ -115,8 +116,8 @@ if __name__=='__main__':
                               seasons=tourny_years,
                               normalize=data.normalize)
 
-    classifier = GridSearch(SVC(probability=True), grid, scoring=scorer,
-                            verbose=3, refit=True, n_jobs=1)
+    classifier = GridSearchCV(SVC(probability=True), grid, scoring=scorer,
+                              verbose=2, refit=True, n_jobs=1, cv=4)
 
     # Train classifier
     print_info("Searching for optimal classifier ...")
