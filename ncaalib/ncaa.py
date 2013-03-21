@@ -233,7 +233,9 @@ class Game(Base):
             q2 = q2.limit(limit)
         
         return q2.all()
-        
+
+    def __contains__(self, squad):
+        return squad in game.opponents
     
     def __repr__(self):
         teams = "%s vs. %s" % (self.opponents[0].team.name,
