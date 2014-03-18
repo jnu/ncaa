@@ -1,11 +1,11 @@
 /**
  * $ casperjs ncaaPlayerStatScraper.js
  *
- * 
+ *
  * Copyright (c) 2013 Joseph Nudell
  * Freely distributable under MIT license.
  */
- 
+
 
 // Create CasperJS object
 var casper = require('casper').create({
@@ -29,7 +29,8 @@ var x = require('casper').selectXPath;
 
 // Global parameters
 var resume = casper.cli.get('resume') || null,
-	index = "http://stats.ncaa.org/team/inst_team_list?academic_year=2013&conf_id=-1&division=1&sport_code=MBB",
+	year = casper.cli.get('year') || 2014,
+	index = "http://stats.ncaa.org/team/inst_team_list?academic_year=" + year + "&conf_id=-1&division=1&sport_code=MBB",
 	playerDBName = "players-"+casper.today()+(resume?"-resumedAt_"+resume:"")+".csv",
 	gameDBName = "gameByPlayers-"+casper.today()+(resume?"-resumedAt_"+resume:"")+".csv",
 	errorLogName = "errors-"+casper.today()+(resume?"-resumedAt_"+resume:"")+".csv",
@@ -64,10 +65,10 @@ casper.then(function() {
 	// Open ouput files
 	casper.echo("Opening player database at `"+ playerDBName +"` ... ");
 	playerDB = fs.open(playerDBName, 'w');
-	
+
 	casper.echo("Opening games database at `"+ gameDBName +"` ... ");
 	gameDB = fs.open(gameDBName, 'w');
-	
+
 	// Open error log silently.
 	errorLog = fs.open(errorLogName, 'w');
 });
@@ -85,37 +86,37 @@ casper.then(function() {
 			return {name: teamLink.innerText.strip(), href: teamLink.href};
 		});
 	});
-	
+
 	if(data.teamLinks===null) {
 		casper.echo("Failed to find any team links to scrape. Quitting.", "ERROR").exit();
 	}
-	
+
 	data.indexPage = casper.getCurrentUrl();
 
 
 	// User might have specified "resume", in which case shift the teamLinks array
 	// until the requested "start" team is matched.
-	
+
 	if(resume) {
 		var lcResume = resume.toLowerCase();
-		
+
 		var locTL = data.teamLinks.map(function(c) { return c; });
-		
+
 		while(locTL.length>1) {
 			if(locTL[0].name.toLowerCase()==lcResume) break;
 			locTL.shift();
 		}
-		
+
 		data.teamLinks = locTL;
-		
-		
+
+
 		if(data.teamLinks[0].name.toLowerCase()!=lcResume) {
 			casper.echo("Failed to find `"+ resume +"` in index. Can't resume scraping at this team. Quitting.", "ERROR").exit();
 		}
 	}
-	
+
 	casper.echo("Found "+ data.teamLinks.length +" teams to scrape.", "PARAMETER");
-	
+
 });
 
 /// End of boilerplate / main index parsing
@@ -149,32 +150,32 @@ parser.playerPage = function(player) {
 	// Parse the player's page.
 	var that = this;
 	data.statsRetrieved = data.statsRetrieved || {};
-	
+
 	// First store the player info in the local data cache.
 	data.players[player.id] = player.href;
-	
+
 	// Use to get current grade level, insofar as this is possible
 	var gradeMap = ['Sr', 'Jr', 'So', 'Fr'],
 	origYear = gradeMap.indexOf(player.year);
-	
+
 	// This data is not cached, but will be written to the output file.
 	var d = new Date();
 		scrapeTime = d.getTime() + d.getTimezoneOffset()*60*1000;
-		
+
 	this.then(function() { this.echo("    >> Opening player info for "+ player.name +" ...", "PARAMETER") });
-	
-	
+
+
 	var _getStats = function() {
 		// This is the real parser. Get data here and write it to a file.
 		var currentSeason = getCurrentYear.call(this);
-		
+
 		// First -- Career stats.
 		var needHeaders = data.careerStatHeaders===undefined,
 			needStats = data.statsRetrieved[player.id]===undefined;
-		
+
 		if(needStats) {
 			this.echo("      + Getting career stats for player "+ player.name +" ("+ player.id +")", "COMMENT");
-			// Career stats are contained in TR.text rows 
+			// Career stats are contained in TR.text rows
 			var cstats = this.evaluate(function(needHeaders) {
 				// Get the rows and parse them. Get headers as very first row if necessary.
 				try{
@@ -186,7 +187,7 @@ parser.playerPage = function(player) {
 						console.log("casper:debug> Career Stats: "+ stats.toCSVEntry());
 						return stats;
 					});
-					
+
 					var headers = null;
 					if(needHeaders) {
 						var headerCellsList = $j.selectFirst('tr.grey_heading').querySelectorAll('td');
@@ -195,14 +196,14 @@ parser.playerPage = function(player) {
 							headers.push(cell.innerText.strip());
 						});
 					}
-					
+
 					return {rows: rows, headers: headers};
 				}catch(e) {
 					console.log(e.message);
 					return {};
 				}
 			}, needHeaders);
-			
+
 			// Append data to players database, headers first (if applicable)
 			if(cstats) {
 				if(cstats.headers) {
@@ -234,14 +235,14 @@ parser.playerPage = function(player) {
 				errorLog.flush();
 			}
 		}
-		
-		
-		
+
+
+
 		// Now get the individual game statistics.
 		this.echo("      + Getting game stats for "+ player.name +" / Season "+currentSeason, "COMMENT");
-		
+
 		needHeaders = data.gameStatHeaders===undefined;
-			
+
 		var gstats = this.evaluate(function(needHeaders) {
 			// Get game stats with a fancy xpath query.
 			var rows = $j.selectAll('.//div[starts-with(@id, "game")]//tr[@class="grey_heading"]/following-sibling::tr').map(
@@ -253,7 +254,7 @@ parser.playerPage = function(player) {
 					return stats;
 				}
 			);
-			
+
 			// Get headers if so advised
 			var headers = null;
 			if(needHeaders) {
@@ -263,11 +264,11 @@ parser.playerPage = function(player) {
 					}
 				);
 			}
-		
+
 			return {rows: rows, headers: headers};
 		}, needHeaders);
-		
-		
+
+
 		// Finally, write to gameDB.
 		if(gstats) {
 			if(gstats.headers) {
@@ -277,7 +278,7 @@ parser.playerPage = function(player) {
 									   .concat(gstats.headers, ['Date Retrieved', 'Source']);
 				gameDB.writeLine(data.gameStatHeaders.toCSVEntry());
 			}
-			
+
 			if(gstats.rows) {
 				gstats.rows.forEach(function(me, i) {
 					var thisYear = (origYear>=0 && origYear+i<gradeMap.length)? gradeMap[origYear+i] : "";
@@ -298,21 +299,21 @@ parser.playerPage = function(player) {
 			errorLog.writeLine(['player-game', player.id, player.href, 'missing'].toCSVEntry());
 			errorLog.flush();
 		}
-		
+
 		// Done!
 		this.echo("      - Got stats!", "TRACE");
-		
+
 	};
-	
+
 	this.thenOpen(player.href, function() {
 		// Parse the player stats pages. (for all years.)
 		// Includes summarial data as well as individual game data. Get it ALL.
 		var ppc = this;
-		
+
 		var years = getYearLinks.call(this).map(function(me){ return me.text; });
-		
+
 		var currentYear = getCurrentYear.call(this);
-		
+
 		// Translate season link texts in YEARS to IDs
 		years = years.map(function(me){
 			if(!Object.keys(data.yearIDs).contains(me)) {
@@ -323,7 +324,7 @@ parser.playerPage = function(player) {
 			return [me, data.yearIDs[me]];
 		});
 		years.unshift([currentYear, undefined]);
-		
+
 		// Iterate through years and download player stats for each year.
 		years.forEach(function(me) {
 			if(me[1]===undefined) {
@@ -342,29 +343,29 @@ parser.playerPage = function(player) {
 				ppc.thenOpen(newURL, _getStats);
 			}
 		});
-		
+
 		gameDB.flush();
 		playerDB.flush();
 	});
-	
+
 }
-	
+
 
 // Parse Team Stats Page
 parser.teamPage = function(teamLink) {
 	data.teams = data.teams || {};
 	data.players = data.players || {};
 	data.yearIDs = data.yearIDs || {};
-	
+
 	var that = this;
-	
+
 	var _getRoster = function() {
 		var grc = this;
-		
+
 		var currentYear = getCurrentYear.call(this);
-		
+
 		this.echo("   :: Getting team roster for "+ currentYear +" season ...", "PARAMETER");
-		
+
 		// Get the roster of team as displayed on current page.
 		var players = this.evaluate(function() {
 			console.log("casper:   * Entering remote page context (team page)");
@@ -376,7 +377,7 @@ parser.teamPage = function(teamLink) {
 					console.log("Error determining player ID in link: "+ me.href);
 					playerID = -1;
 				}
-				
+
 				// Get adjacent fields
 				try{
 					var linkCell = '//a[contains(@href, "stats_player_seq='+playerID+'")]/parent::td',
@@ -384,7 +385,7 @@ parser.teamPage = function(teamLink) {
 						position = $j.selectFirst(linkCell + "/following-sibling::td").innerText,
 						height = $j.selectFirst(linkCell + "/following-sibling::td/following-sibling::td").innerText,
 						year = $j.selectFirst(linkCell + "/following-sibling::td/following-sibling::td/following-sibling::td").innerText;
-						
+
 						// convert height to inches
 						if(height) {
 							try{
@@ -398,9 +399,9 @@ parser.teamPage = function(teamLink) {
 				}catch(e){
 					console.log("Error:" + e.message);
 				}
-				
-				
-				
+
+
+
 				return {
 					id: playerID,
 					href: me.href,
@@ -412,7 +413,7 @@ parser.teamPage = function(teamLink) {
 				};
 			});
 		});
-		
+
 		// Any player that is already in the data store has
 		// been retrieved already. Only add new entries.
 		players.forEach(function(player) {
@@ -422,31 +423,31 @@ parser.teamPage = function(teamLink) {
 			}
 		});
 	};
-	
+
 	// Open link to the stats page for a given team.
 	this.start(teamLink, function() {
 		// Parse Team page.
-		
+
 		var teamName = this.evaluate(function() {
 			return $j.selectFirst('h1').innerText.replace(/\(.+\)/g, '').strip();
 		});
-		
+
 		// - Get Team ID
 		var teamID = this.getCurrentUrl().split('=')[1];
 		data.teams[teamID] = data.teams[teamID] || {};
-		
+
 		this.echo("  * Getting data for team "+teamID+" ("+ teamName +") ...", "TRACE");
-		
+
 		// - Get other years of stats for team.
 		data.teams[teamID].yearLinks = getYearLinks.call(this);
-		
+
 		// - Get team rosters (for every year)
 		// Starting with current year
 		_getRoster.call(this);
-		
+
 		// figure out what the current year is
 		var currentYear = getCurrentYear.call(this);
-		
+
 		if(!Object.keys(data.yearIDs).contains(currentYear)) {
 			// Get and add currentYear ID to local data cache if necessary
 			var cyid = this.getCurrentUrl().match(/\/(\d+)\?/);
@@ -458,7 +459,7 @@ parser.teamPage = function(teamLink) {
 				errorLog.writeLine(['yearID', me.innerText, me.href, 'missing'].toCSVEntry());
 			}
 		}
-		
+
 		// Get team rosters for every other year
 		data.teams[teamID].yearLinks.forEach(function(me) {
 			if(!Object.keys(data.yearIDs).contains(me.text)) {
@@ -473,7 +474,7 @@ parser.teamPage = function(teamLink) {
 					errorLog.writeLine(['yearID', me.innerText, me.href, 'missing'].toCSVEntry());
 				}
 			}
-			
+
 			// Grab the team roster and parse it.
 			that.thenOpen(me.href, _getRoster);
 		});
@@ -500,4 +501,3 @@ function _scrape() {
 
 // Call _scrape() when everything else is finished.
 casper.run(_scrape);
-	

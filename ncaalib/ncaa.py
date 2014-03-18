@@ -23,7 +23,7 @@ for Teams, Players, and Games. Here's the gist of this network:
 > Team
     @ Contains vital info about team (name, etc.)
     + Contains a collection of TeamAliases
-    
+
     + Squad (a Team in a particular year)
         @ Contains descriptive info about Squad: season, RPI, etc.
         ^ references parent Team
@@ -33,7 +33,7 @@ for Teams, Players, and Games. Here's the gist of this network:
 
 > Player
     @ Contains vital info about player (name, height, etc.)
-    
+
     > SquadMember (a Player in a particular year)
         @ Contains vitalish info about player (jersey #, year in college, etc.)
         ^ references parent Player
@@ -44,7 +44,7 @@ for Teams, Players, and Games. Here's the gist of this network:
             @ Contains performance statistics for a particular Game
             ^ references parent SquadMember
             + references particular Game
-            
+
 
 > Game
     + contains collection of opponents in Game
@@ -128,7 +128,7 @@ schedule = Table('schedule', Base.metadata,
     Column('squad_id', Integer, ForeignKey('squad.id', onupdate='cascade')),
     Column('type', Enum('home', 'away'))
 )
-    
+
 
 
 
@@ -141,14 +141,14 @@ class Game(Base):
     Many-to-many map to Squads via Schedule, one-to-many map to
     PlayerStatSheets.'''
     __tablename__ = 'game'
-    
+
     discriminator = Column(String)
     __mapper_args__ = {'polymorphic_on' : discriminator}
-    
+
     id = Column(Integer, primary_key=True)
 
     date = Column(Date)
-    
+
     # Map squads playing via schedule cross-reference Table
     opponents = relationship('Squad',
                              secondary=schedule,
@@ -163,7 +163,7 @@ class Game(Base):
     loser = relationship('Squad', foreign_keys=[loser_id],
                          backref=backref('losses', order_by=date))
     loser_score = Column(Integer)
-    
+
     # Post season
     postseason = Column(Boolean)
     overtime = Column(Integer)
@@ -185,9 +185,9 @@ class Game(Base):
         self.opponents.append(second_team)
         self.date = date
         self.arena = location
-        
+
         self.postseason = postseason
-        
+
         self.winner_score = winner_score
         self.loser_score = loser_score
 
@@ -221,22 +221,22 @@ class Game(Base):
                               .filter(Game.opponents.any(Squad.roster==None))
         q_tournament = session.query(Game).filter(Game.postseason==True)
         q_nowinner = session.query(Game).filter(Game.winner==None)
-        
+
         q2 = session.query(Game).except_(q_incomplete,
                                          q_tournament,
                                          q_nowinner)
-        
+
         if random:
             q2 = q2.order_by(func.random())
-        
+
         if limit is not None:
             q2 = q2.limit(limit)
-        
+
         return q2.all()
 
     def __contains__(self, squad):
         return squad in game.opponents
-    
+
     def __repr__(self):
         teams = "%s vs. %s" % (self.opponents[0].team.name,
                                 self.opponents[1].team.name)
@@ -281,7 +281,7 @@ class Player(Base):
         if id is not None: self.id = id
         if height is not None: self.height = height
         if position is not None: self.position = position
-        
+
     def __repr__(self):
         return "<Player('%s %s')>" % (self.first_name, self.last_name)
 
@@ -295,13 +295,13 @@ class SquadMember(Base):
     __tablename__ = 'squadmember'
 
     id = Column(Integer, primary_key=True)
-    
+
     player_id = Column(Integer, ForeignKey('player.id', onupdate='cascade'))
     player = relationship('Player', backref=backref('career', order_by=id))
 
     squad_id = Column(Integer, ForeignKey('squad.id', onupdate='cascade'))
     squad = relationship('Squad', backref=backref('roster', order_by=id))
-    
+
     stats_id = Column(Integer, ForeignKey('statscache.id', onupdate='cascade'))
     stats = relationship('SquadMemberDerivedStats', backref=backref('referent',
                                                                uselist=False,
@@ -312,7 +312,7 @@ class SquadMember(Base):
     # Vital-ish stats
     jersey = Column(Integer)
     year = Column(String)       # i.e., year in college (Freshman, etc.)
-    
+
 
     def __init__(self, player, squad, jersey=None, year=None):
         self.player = player
@@ -330,24 +330,24 @@ class SquadMember(Base):
     def derive_stats(self):
         '''Calculate and cache derived statistics'''
         derived_stats = defaultdict(float)
-        
+
         for statsheet in self.statsheets:
             # Sum statsheets
             minutes_played = statsheet.minutes_played
-            
+
             if minutes_played:
                 derived_stats['games_played'] += 1.0
             else:
                 # Played 0 minutes in this game, move on
                 continue
-                
+
             for stat in statsheet.stats:
                 val = getattr(statsheet, stat)
                 if val is None:
                     # Data is N/A. Interpret as 0.
                     continue
                 derived_stats[stat] += val
-    
+
         # Calculate percentages and averages
         for newfield, rat in DerivedStats.pctfields.items():
             num, den = rat
@@ -408,7 +408,7 @@ class PlayerStatSheet(Base):
     steals = Column(Integer)
     blocks = Column(Integer)
     fouls = Column(Integer)
-    
+
     stats = [
         'minutes_played',
         'field_goals_made',
@@ -435,18 +435,18 @@ class PlayerStatSheet(Base):
                               self.game.opponents[1].team.name)
         date = self.game.date.strftime('%h %d, %Y')
         return "<PlayerStatSheet('%s', '%s', '%s')>" % (name, game, date)
-    
+
 
 
 
 class DerivedStats(Base):
     __tablename__ = 'statscache'
     id = Column(Integer, primary_key=True)
-    
+
     # Polymorphic: DerivedStatsPlayer, DerivedStatsSquad
     type = Column(String)
     __mapper_args__ = {'polymorphic_on' : type}
-    
+
     # One-to-One relationship with Squad / SquadMember
 
     # Derived statistics -- all calculated on load, stored in self.stats
@@ -469,7 +469,7 @@ class DerivedStats(Base):
         'blocks',
         'fouls',
     ]
-    
+
     pctfields = {
         # Ratios
         'fg_pct'     : ('field_goals_made', 'field_goals_attempted'),
@@ -490,7 +490,7 @@ class DerivedStats(Base):
         'fouls_avg'      : ('fouls', 'games_played'),
         'turnovers_avg'  : ('turnovers', 'games_played'),
     }
-    
+
     # Sums
     games_played = Column(Float)
     minutes_played = Column(Float)
@@ -516,7 +516,7 @@ class DerivedStats(Base):
     ft_pct = Column(Float)
     ppm = Column(Float)
     lpm = Column(Float)
-    
+
     # Averages
     field_goal_avg = Column(Float)
     looks_avg = Column(Float)
@@ -561,7 +561,7 @@ class SquadMemberDerivedStats(DerivedStats):
 class SquadDerivedStats(DerivedStats):
     __mapper_args__ = {'polymorphic_identity' : 'squad'}
     # NOTE referent is one-to-one mapping to Squad
-    
+
 
 
 
@@ -600,17 +600,17 @@ class Squad(Base):
         self._cache = dict()        # Cache is never persisted.
         if team is not None:
             self.team = team
-    
+
     @reconstructor
     def _reconstruct(self):
         self._cache = dict()        # Cache is never persisted.
         if self.stats is None:
             self.derive_stats()
-    
+
     def derive_stats(self):
         '''Derive statistics'''
         derived_stats = defaultdict(float)
-        
+
         # Calculate sums
         for member in self.roster:
             member.derive_stats()
@@ -619,11 +619,11 @@ class Squad(Base):
                     # No value here. Player wasn't prolific in this area.
                     continue
                 derived_stats[stat] += val
-    
+
         # Overwrite some aggregate stats with more useful values
         derived_stats['games_played'] = float(len(self.schedule))
-    
-        # Calculate percentages and averages        
+
+        # Calculate percentages and averages
         for newfield, rat in DerivedStats.pctfields.items():
             num, den = rat
             if type(den) is str:
@@ -641,34 +641,34 @@ class Squad(Base):
         else:
             # Create new record
             self.stats = SquadDerivedStats(derived_stats)
-    
+
     def win_pct(self, weighted=False, postseason=False):
         '''Calculate win percentage. Weighted win pct multiplies home wins
         by .6, home losses by 1.4, away wins by 1.4 and away losses by .6.'''
         w = float(len(self.wins))
         l = float(len(self.losses))
-        
+
         if weighted:
             away_win_weight = home_loss_weight = 1.4
             away_loss_weight = home_win_weight = .6
             away_wins = home_wins = 0.
             away_losses = home_losses = 0.
             neutral_wins = neutral_losses = 0.
-        
+
             name = self.team.name
-        
+
             for game in self.schedule:
                 if game.winner is None:
                     # Skip unplayed games
                     continue
-                
+
                 if not postseason and game.postseason:
                     # Skip postseason games if specified
                     continue
-                
+
                 op = [s for s in game.opponents if s is not self][0]
                 opname = op.team.name
-                
+
                 if game.arena==opname:
                     # Away game
                     if game.winner is self:
@@ -687,7 +687,7 @@ class Squad(Base):
                         neutral_wins += 1.
                     else:
                         neutral_losses += 1.
-            
+
             # Weight wins and losses. 1.4 and .6 is what the NCAA uses.
             w = away_wins * away_win_weight \
                 + home_wins * home_win_weight \
@@ -695,27 +695,27 @@ class Squad(Base):
             l = away_losses * away_loss_weight \
                 + home_losses * home_loss_weight \
                 + neutral_losses
-    
+
         try:
             return w / (w+l)
         except ZeroDivisionError as e:
             # Divide by zero error happens when squad has no data
             return None
-    
+
     def opponents(self, played=True, postseason=False, cache=True):
         '''Get opponents. If played is True, only get opponents in games that
         have been played so far. By default exclude postseason games.'''
         _cachekey = 'opponents%s%s' % (played, postseason)
         if cache and self._cache.has_key(_cachekey):
             return self._cache[_cachekey]
-        
+
         sched = self.schedule
         if played:
             sched = self.wins + self.losses
-        
+
         if not postseason:
             sched = [gm for gm in sched if not gm.postseason]
-            
+
         ret = [op for op in sum([gm.opponents for gm in sched], [])
                 if op is not self]
 
@@ -723,7 +723,7 @@ class Squad(Base):
             self._cache[_cachekey] = ret
 
         return ret
-    
+
     def _owp(self):
         '''Opponents winning percentage'''
         w = sum([len(op.get_wins()) for op in self.opponents()], 0.)
@@ -757,13 +757,13 @@ class Squad(Base):
             games = self.schedule
         else:
             games = [g for g in self.schedule if not g.postseason]
-        
+
         if played:
             games = [g for g in games if g.winner is not None]
-        
+
         if cache:
             self._cache[_cachekey] = games
-        
+
         return games
 
     def get_wins(self, postseason=False, cache=True):
@@ -779,7 +779,7 @@ class Squad(Base):
             wins = self.wins
         else:
             wins = [g for g in self.wins if not g.postseason]
-        
+
         if cache:
             self._cache[_cachekey] = wins
 
@@ -792,7 +792,7 @@ class Squad(Base):
         _cachekey = 'losses%s' % postseason
         if cache and self._cache.has_key(_cachekey):
             return self._cache[_cachekey]
-        
+
         losses = []
         if postseason:
             losses = self.losses
@@ -801,16 +801,19 @@ class Squad(Base):
 
         if cache:
             self._cache[_cachekey] = losses
-            
+
         return losses
-    
+
     def get_rpi(self):
         '''Calculate RPI.'''
         wp = self.win_pct(weighted=True)
         opponents = self.opponents()
         owp = self._owp()
         oowp = self._oowp()
-        self.rpi = .25*wp + .5*owp + .25*oowp
+        try:
+            self.rpi = .25*wp + .5*owp + .25*oowp
+        except:
+            self.rpi = None
         return self.rpi
 
     @staticmethod
@@ -850,14 +853,14 @@ class Team(Base):
         self.name = name
         if id is not None:
             self.id = id
-    
+
     @staticmethod
     def get(session, name):
         '''Convenience function for getting teams by name.'''
         normalized_name = normalize_name(name)
         ta = session.query(TeamAlias).filter_by(name=normalized_name).one()
         return ta.team
-    
+
     @staticmethod
     def search(session, name, threshold=.9, method=fuzzymatch):
         '''Convenience function that tries to fuzzily match the given name to
@@ -866,7 +869,7 @@ class Team(Base):
         several fuzzy matching libraries in order of quality (subjective) and
         interfaces with the first one it finds. Last choice is standard library
         difflib, which isn't great for this task but it'll work in a pinch.
-    
+
         Returns OrderedDict of IDs of Teams hwose name (any variation of it)
         matches the provided `name` above a certain threshold. Keys are IDs,
         values are match percentile.'''
@@ -941,14 +944,14 @@ class TournamentGame(Game):
     __tablename__ = 'tournygame'
     __mapper_args__ = {'polymorphic_identity' : 'tourneygame'}
     id = Column(Integer, ForeignKey('game.id'), primary_key=True)
-    
+
     index = Column(Integer)
 
     tournament_id = Column(Integer, ForeignKey('tournament.id',
                                                onupdate='cascade'))
     tournament = relationship('Tournament',
                               backref=backref('games', order_by=index))
-        
+
     def __init__(self, tournament, index):
         self.index = index
         self.tournament = tournament
@@ -967,10 +970,10 @@ class TournamentGame(Game):
     def __repr__(self):
         round, region, n = self.tournament.lookup(self.index)
         op1, op2 = None, None
-        
+
         if len(self.opponents)==2:
             op1, op2 = [op.team.name for op in self.opponents]
-        
+
         return "<TournamentGame('%s', '%s', '%s', '%s', '%s vs. %s')>" \
                 % (self.tournament.season, round, region, n, op1, op2)
 
@@ -988,11 +991,11 @@ class Tournament(Base):
     id = Column(Integer, primary_key=True)
 
     regions_store = Column(String)
-    rounds_store = Column(String) 
+    rounds_store = Column(String)
     delim = Column(String)
     season = Column(String)
     playin = Column(String)
-    
+
     # Transient default scores for pointsmap - not saved in DB
     # Converted to pointsmap based on round names in _reconstruct().
     # Ordered from Championship (0th element) to 1st round (5th element).
@@ -1012,7 +1015,7 @@ class Tournament(Base):
             self.playin = 'playin' if type(playin) is bool else str(playin)
         else:
             self.playin = None
-        
+
         self.delim = delim
 
         if rounds is not None:
@@ -1078,7 +1081,7 @@ class Tournament(Base):
     def set(self, data, round_, region=0, n=0):
         idx = self.index(round_, region, n)
         self.games[idx] = data
-         
+
     def index(self, round_, region=0, n=0):
         if type(region) is not int:
             if region is None:
@@ -1087,7 +1090,7 @@ class Tournament(Base):
                 if self.delim in region:
                     region = region.partition(self.delim)[0]
                 region = self.regions.index(region)
-        
+
         if type(round_) is not int:
             round_ = self.rounds.index(round_)
 
@@ -1096,7 +1099,7 @@ class Tournament(Base):
 
         # Get number of games in each region
         gsize = (1<<round_) / 4
-        
+
         # Special case if finalfour or finals
         if not gsize:
             if not round_:
@@ -1108,7 +1111,7 @@ class Tournament(Base):
 
         # Find horizontal offset in row
         return rowinitid + (region*gsize) + n
-        
+
     def get(self, round_, region=0, n=0):
         idx = self.index(round_, region, n)
         return self.games[idx]
@@ -1140,7 +1143,7 @@ class Tournament(Base):
                         continue
                 raise IndexError("%s opponents in game %d" \
                                     % (len(tgame.opponents), tgame.index))
-        
+
             r = decide(tgame)
             if type(r) is Game:
                 tgame = r
@@ -1163,7 +1166,7 @@ class Tournament(Base):
                                             % type(r))
 
             nextroundgame = tgame.next()
-            
+
             if nextroundgame:
                 nextroundgame.opponents.append(tgame.winner)
 
@@ -1175,13 +1178,13 @@ class Tournament(Base):
 
     def __repr__(self):
         return "<Tournament('%s')>" % self.season
-    
+
     def empty_bracket(self, name=None):
         '''Return a clone of this Tournament that has not been filled out,
         except for the first round. Designate its moniker.'''
         if name is None:
             name = "%s-empty-%d" % (self.season, randint(0, 1000000))
-        
+
         newtourny = Tournament(name, rounds=self.rounds, regions=self.regions,
                                delim='/', playin=self.playin)
         # Get index - start of first round
@@ -1200,10 +1203,10 @@ class Tournament(Base):
                     fr_ops = newtourny[i].next().opponents
                     newtourny[i].next().opponents = [s for s in fr_ops
                                                         if s not in ops]
-    
+
         # Return new Tournament
         return newtourny
-        
+
 
     def export(self, format='heap', meta=None):
         '''Serialize tournament. Supports to methods of serialization. First
@@ -1213,7 +1216,7 @@ class Tournament(Base):
         format = format.lower()
         if format not in formats:
             raise NotImplementedError("Format %s not implemented." % format)
-        
+
         # Create object wrapper for output
         output = {
             'regions' : self.regions,
@@ -1221,15 +1224,15 @@ class Tournament(Base):
             'season' : self.season,
             'nodes' : []
         }
-        
+
         if meta:
             # Misc data to be included with output. E.g., clf hyperparams.
             output['meta'] = meta
-        
+
         if hasattr(self, '_correctedAgainst'):
             # Give ID of tournament used to correct bracket, if corrected
             output['correctedAgainst'] = self._correctedAgainst
-        
+
         def _createNode(id_, squad, score, children=None):
             # Used to specify consistent structure of nodes.
             node = {
@@ -1244,9 +1247,9 @@ class Tournament(Base):
             if children is not None:
                 node['children'] = children
             return node
-        
+
         ## Output algorithms
-        
+
         if format=='heap':
             # Default format: Heap-list with some extra info. JSON.
             # Nodes are WINNERS (or opponents) of each game, not whole games
@@ -1264,14 +1267,14 @@ class Tournament(Base):
                     for x in [0,1]:
                         heap.append(_createNode((i<<1)+1+x, None, None))
                     continue
-                
+
                 elif len(self[i].opponents)==1:
                     # Opponent in playin game
                     heap.append(_createNode((i<<1)+1, self[i].opponents[0],
                                 None))
                     heap.append(_createNode((i<<1)+2, None, None))
                     continue
-                    
+
                 # Iterate through 1st round games and add opponents (and their
                 # scores and stuff) to heap. Order by seed.
                 ops = sorted(self[i].opponents,
@@ -1283,16 +1286,16 @@ class Tournament(Base):
                     scores.reverse();
                 for x in [0,1]:
                     heap.append(_createNode((i<<1)+1+x, ops[x], scores[x]))
-            
+
             # Set nodes attribute of output structure
             output['nodes'] = heap
-            
+
         ###
-        
+
         elif format=='nested':
             # Javascript Infovis Toolkit (JSON)
             # Root at Champion.
-            
+
             fr_id = self.index(self.rounds[-2 if self.playin else -1])
             fr_id = ((fr_id+1)<<1) - 1
 
@@ -1301,7 +1304,7 @@ class Tournament(Base):
                 currentsquad = None
                 children = []
                 score = None
-                
+
                 if n >= fr_id:
                     if len(self[prev].opponents)==0:
                         currentsquad = None
@@ -1315,21 +1318,21 @@ class Tournament(Base):
                     currentsquad = self[n].winner
                     children = [_maketree(2*n+1, n),
                                 _maketree(2*n+2, n)]
-            
+
                 if prev is not None:
                     # Get points scored in game
                     if currentsquad is self[prev].winner:
                         score = self[prev].winner_score
                     elif currentsquad is self[prev].loser:
                         score = self[prev].loser_score
-                    
+
                 # Construct node and return
                 return _createNode(n, currentsquad, score, children)
-            
+
             # Create the structure, store in output object
             output['nodes'] = _maketree()
             ###
-            
+
         # Serialize output
         return json.dumps(output)
 
@@ -1373,7 +1376,7 @@ to unknown round %s" % (val, key))
                 self.points += self.pointsmap[roundlbl]
 
         return self.points
-        
+
     def correct(self, realtourny):
         '''Correct this Tournament based on actual results Tournament.
         Sets the 'accurate' attribute on TournamentGames to True if correct,
@@ -1419,7 +1422,7 @@ class GameDecider(object):
         self.classifier = classifier
         self.extractor = extractor
         self.normalize = normalize
-    
+
         if method is None:
             if hasattr(classifier, 'classify'):
                 self.method = getattr(classifier, 'classify')
@@ -1485,7 +1488,7 @@ def fuzzy_match_team(session, name, threshold=.9, matcher=fuzzymatch):
     fuzzy matching libraries in order of quality (subjective) and interfaces
     with the first one it finds. Last choice is standard library difflib,
     which isn't great for this task but it'll work in a pinch.
-    
+
     Returns OrderedDict of IDs of Teams hwose name (any variation of it)
     matches the provided `name` above a certain threshold. Keys are IDs,
     values are match percentile.'''

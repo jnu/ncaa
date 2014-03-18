@@ -17,7 +17,7 @@ Run `python dbmgr.py -h` to see possible command line arguments.
 # DEPENDENCIES
 ## LOCAL
     + ncaalib          Module containing DB schema / ORM
-    
+
 ## 3RD PARTY
     + sqlalchemy
     + nameparser    Available via `pip install nameparser`
@@ -52,7 +52,6 @@ import datetime
 
 
 
-
 def get_team_by_player_id(session, pid, season):
     return session.query(Squad)\
                   .join(SquadMember)\
@@ -71,7 +70,7 @@ def get_squad_by_season(session, name, season):
         return session.query(Squad)\
                       .join(Team)\
                       .filter(Team.name==name, Squad.season==season).one()
-            
+
     except Exception as e:
         print "Error getting %s in %s: %s" % (name, season, str(e))
 
@@ -167,7 +166,7 @@ def team_list_prompt(session, name, options=[]):
         for team,score in options:
             print "%d) %s (%d%%)" % (i, team.name, int(round(score*100)))
             i += 1
-            
+
         ans = None
         while ans is None:
             # prompt: no or number
@@ -203,11 +202,11 @@ def team_list_prompt(session, name, options=[]):
 
 def create_new_team_prompt(session, name, yesall=None):
     # Create a new team through the use of prompts
-    
+
     yn = 'yes'
     if not yesall:
         yn = raw_input("Is `%s` the name of the new team (y/n)? " % name)
-    
+
     if not is_yes(yn):
         # Prompt for new team name
         name = raw_input("New team name: ")
@@ -290,7 +289,7 @@ def create_and_upgrade(engine, metadata):
                                                  model_col_spec)
                 engine.execute(sql)
 
-            # It's difficult to reliably determine if the model has changed 
+            # It's difficult to reliably determine if the model has changed
             # a column definition. E.g. the default precision of columns
             # is None, which means the database decides. Therefore when I look
             # at the model it may give the SQL for the column as INTEGER but
@@ -329,7 +328,7 @@ the model ... leaving be, for now." % (model_table.name, model_column.name))
 
 def _column_names(table):
     # Autoloaded columns return unicode column names
-    return set((unicode(i.name) for i in table.c)) 
+    return set((unicode(i.name) for i in table.c))
 
 
 
@@ -342,11 +341,11 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(description="Manage NCAA datbase.")
     parser.add_argument('dbname', type=str, metavar='DB',
                         help='path to NCAA database')
-    
+
     parser.add_argument('-m', '--map', dest='nmap', type=argparse.FileType('r'),
                         metavar='team-names-map', default=None,
                         help='map from team IDs to team name  names')
-    
+
     parser.add_argument('-a', '--aliases', dest='aliases',
                         metavar='aliases-map',
                         type=argparse.FileType('r'), help='map from team name \
@@ -356,7 +355,7 @@ to variations of this team name', default=None)
                         metavar='players-csv',
                         type=argparse.FileType('r'), help='add players to DB',
                         default=None)
-    
+
     parser.add_argument('-q', '--quickadd', type=argparse.FileType('r'),
                         metavar='quick-players.csv', help='quickly add players \
 to DB.', default=None, dest='quickadd')
@@ -370,7 +369,7 @@ player to database', default=None)
                         metavar='stats-csv',
                         type=argparse.FileType('r'), help='make sure scores \
 are stored properly in DB.', default=None)
-    
+
     parser.add_argument('-r', '--resume', dest='resume', metavar='name',
                         help='Resume entry at given player (last name, first). \
 Can also resume by ID.',
@@ -381,8 +380,8 @@ at games played after last Game in DB", action='store_true')
 
     parser.add_argument('-y', '--yes', dest='yesall', help="Yes to prompts",
                         action='store_true')
-    
-    
+
+
     cli = parser.parse_args()
 
     # Create database engine
@@ -405,7 +404,7 @@ at games played after last Game in DB", action='store_true')
 
 
     # -- Now do whatever was specified on CLI --
-    
+
     # --------------------------------- //
     if cli.nmap:
         # Provided a map (as csv) from team IDs to names
@@ -448,12 +447,12 @@ id=%d: `%s`" % (int(entry[1]), old.name))
         # NOTE: no header.
         for line in reader:
             print_comment("Looking at line beginning `%s` ... " % line[0])
-            
+
             # For each entry in the CSV
             # find the Team to which this line is referring
             refteam = None
             bestmatches = []
-            
+
             for cell in line:
                 bestmatches.extend(Team.search(session, cell))
 
@@ -464,7 +463,7 @@ id=%d: `%s`" % (int(entry[1]), old.name))
             if len(bestmatches)>0 and bestmatches[0][1] == 1:
                 # If perfect match, select team
                 refteam = bestmatches[0][0]
-            
+
             else:
                 # If imperfect match (or no matches), display options
                 refteam = team_list_prompt(session, line[0], bestmatches)
@@ -485,11 +484,11 @@ id=%d: `%s`" % (int(entry[1]), old.name))
                                                                 cell))
             session.commit()
             print_info("Saved progress.")
-            
+
         # Finished.
         session.commit()
         print_success("Finished aliasing!")
-    
+
 
 
 
@@ -499,27 +498,27 @@ id=%d: `%s`" % (int(entry[1]), old.name))
         #print_good("\nAdding players from %s to DB ..." % cli.players)
         # Add players from CSV into DB
         reader = csv.reader(cli.players)
-        
+
         # First entry is header
         headers = reader.next()
         maxlen = len(headers)
-        
+
         entries = [line for line in reader]
-        
+
         print_header("Adding players to DB")
         progbar = ProgressBar(max=len(entries), color='yellow',
                               line=3, stream=stderr)
-        
+
         for entry in entries:
             # Iterate through CSV, adding players to DB
-            
+
             progbar.update(entry[1])
             print >>stderr, ""
-            
+
             changed = False
-            
+
             print_comment("Parsing entry for `%s` ... " % entry[1])
-            
+
             while len(entry) < maxlen:
                 # make sure entries are the expected length
                 entry.append('')
@@ -527,7 +526,7 @@ id=%d: `%s`" % (int(entry[1]), old.name))
             # Find if player is already in DB
             player_id = int(float(entry[0]))
             player = session.query(Player).get(player_id)
-        
+
             if player is None:
                 # Player not found. Create him.
                 changed = True
@@ -541,21 +540,21 @@ id=%d: `%s`" % (int(entry[1]), old.name))
                 session.add(player)
                 print_info("Added %s %s to DB ... " % (player.first_name,
                                                        player.last_name))
-        
+
             # see if can add any info
             if player.height is None:
                 changed = True
                 player.height = entry[2]
                 print_comment("Updated player height")
-            
+
             if player.position is None:
                 changed = True
                 player.position = entry[4]
                 print_comment("Updated player position")
-            
+
             # Temporary!
             player.first_name = player.first_name.strip()
-            
+
 
             # Attempt to find SquadMember of Player in given season.
             squadmember = None
@@ -563,17 +562,17 @@ id=%d: `%s`" % (int(entry[1]), old.name))
                 if sm.squad.season==entry[6]:
                     squadmember = sm
                     break
-                    
+
 
             if squadmember is None:
                 # Couldn't find SquadMember. Create him.
                 changed = True
                 print_info("No info yet for player in this season")
-                
+
                 # - First find Squad
                 # -- Try to find TeamAlias by name
                 team = get_team_by_name(session, entry[7])
-                
+
                 if team is None:
                     # Couldn't find team name in DB
                     print_error("Couldn't find team `%s` in DB. Check \
@@ -602,7 +601,7 @@ team aliases." % (entry[7]))
                         jersey = int(re.sub(r'[^\d]', '', entry[3]))
                     except:
                         pass
-                
+
                 squadmember = SquadMember(player, squad, jersey=jersey,
                                           year=entry[5])
             if changed:
@@ -614,11 +613,11 @@ team aliases." % (entry[7]))
             if progbar.current%20==0:
                 session.commit()
                 print_info("Database saved")
-        
+
             clear_below(10, stream=stderr)
-            
+
         print_success("\nAll finished!")
-            
+
 
     # --------------------------------- //
     if cli.quickadd:
@@ -639,7 +638,7 @@ team aliases." % (entry[7]))
         if squad is None:
             print_warning("Error finding Squad for given season. Creating one.")
             squad = Squad(team, head[1])
-        
+
         for line in reader:
             # Add players to squad
             id_ = int(float(line[1]))
@@ -655,18 +654,18 @@ team aliases." % (entry[7]))
         print_info("Committing changes ...")
         session.commit()
         print_success("All Finished!")
-        
+
 
     # --------------------------------- //
     if cli.gamestats:
         # Add game stats from file to DB.
         print_info("Processing input file (might take a second) ...")
         reader = csv.reader(cli.gamestats)
-        
+
         # The first entry is the header entry
         headers = reader.next()
         maxlen = len(headers)
-        
+
         # Set resume logic parameters
         resumeat = None
         resumeat_l = None
@@ -702,26 +701,26 @@ be very wrong with the database. You should check it by hand.")
 
         # Set up iteration
         entries = [line for line in reader]
-        
+
         clear(stream=stderr)
         print_header("Adding game stats to DB")
         progbar = ProgressBar(max=len(entries), color='yellow', stream=stdout)
 
         # Map headers onto DB schema
         ## NOTE not really necessary now; assume consistent format
-        
+
         for entry in entries:
             # Iterate through lines, adding and connecting things in db
             # as necessary
             while len(entry) < maxlen:
                 # Make sure line is of proper length
                 entry.append('')
-            
+
             progbar.update(message="%s (%s)" % (entry[1], entry[0]))
             print >>stderr, ""
-        
+
             changed = False
-        
+
             # -- RESUME LOGIC -- #
             if resumeat is not None:
                 # Resume entry at given player (Last name, first name)
@@ -755,78 +754,61 @@ be very wrong with the database. You should check it by hand.")
                 #clear_below(10, start=5, stream=stderr)
                 print_warning("Failed to find player `%s` (%s) for season %s \
 in the database." % (entry[1], entry[0], season))
-                print_comment("Would you like to create a new season for this \
-player? (Note this will assume he is still playing for the last team he played \
-for.)")
-                yn = 'no'
-                if cli.yesall:
-                    yn = 'yes'
-                else:
-                    yn = raw_input("Create (y/n)? ", color='yellow')
 
-                if is_yes(yn):
-                    changed = True
-                    print_info("Creating new season for player ... ")
-                    player = session.query(Player).get(player_id)
-                    
-                    if player is None:
-                        print_error("Player doesn't exist in DB at all. Make \
-sure that players have all been added to DB and try again.")
-                        # Prompt: Enter new player?
-                        np = raw_input("Enter new player? ", color='blue')
-                        
-                        if is_yes(np):
-                            # Prompt first name, last name
-                            first_name = raw_input("  First Name? ",
-                                                   color='cyan')
-                            last_name = raw_input("  Last Name? ", color='cyan')
-                            np = Player(first_name, last_name, id=player_id)
-                            session.add(np)
-                            session.commit()
-                        else:
-                            # Quit.
-                            print_error("Not going to continue updating DB.")
-                            exit(21)
+                changed = True
+                print_info("Creating new season for player ... ")
+                player = session.query(Player).get(player_id)
 
-                    # -- Find Squad for this player
-                    # Get last team player played for
-                    try:
-                        last_team = player.career[-1].squad.team
-                    except:
-                        print_warning("No record of this player playing \
-for anyone ever.")
-                        tid = raw_input("Enter team ID: ")
-                        fail = False
-                        
-                        try:
-                            last_team = session.query(Team).get(int(tid))
-                        except:
-                            fail = True
+                # Create new player
+                if player is None:
+                    name = HumanName(entry[1])
+                    player = Player(name.first, name.last,
+                                    middle_name=name.middle,
+                                    name_suffix=name.suffix,
+                                    id=player_id, height=entry[2],
+                                    position=entry[4])
+                    session.add(player)
 
-                        if fail or last_team is None:
-                            print_error("Failed to fix DB. Might have to \
-do it by hand.")
-                            exit(22)
-                    # Get Squad for Team in given season
-                    squad = session.query(Squad)\
-                                    .filter(Squad.team_id==last_team.id)\
-                                    .filter(Squad.season==season)\
-                                    .first()
-                                
-                    if squad is None:
-                        print_error("Squad does not exist for %s in the \
-season %s! You'll have to fix the DB by hand." \
-                            % (last_team.name, season))
-                        exit(23)
-                    # Made it: add player as SquadMember to this Squad
-                    squadmember = SquadMember(player, squad)
                     session.commit()
-                    clear_below(20, stream=stderr)
-                    
-                else:
-                    # -> Opted not to add player through prompts.
-                    print_error("Try to fix database by hand and try again.")
-                    exit(24)
+
+
+                # -- Find Squad for this player
+                # Get last team player played for
+                try:
+                    last_team = player.career[-1].squad.team
+                except:
+                    print_warning("No record of this player playing \
+for anyone ever.")
+                    tid = float(entry[-4])
+                    fail = False
+
+                    try:
+                        last_team = session.query(Team).get(int(tid))
+                    except:
+                        fail = True
+
+                    if fail or last_team is None:
+                        print_error("Failed to fix DB. Might have to \
+do it by hand.")
+                        exit(22)
+                # Get Squad for Team in given season
+                squad = session.query(Squad)\
+                                .filter(Squad.team_id==last_team.id)\
+                                .filter(Squad.season==season)\
+                                .first()
+
+                if squad is None:
+                    print_error("Squad does not exist for %s in the \
+season %s ... Creating ..." \
+                        % (last_team.name, season))
+                    squad = Squad(entry[6], team=last_team)
+
+                # Made it: add player as SquadMember to this Squad
+                squadmember = SquadMember(player, squad)
+                session.commit()
+                clear_below(20, stream=stderr)
+
+
 
             # Try to find Game that stats are being listed for
             # Find the game by matching squadmember's Team with opponent's
@@ -838,6 +820,7 @@ season %s! You'll have to fix the DB by hand." \
             opponent = get_team_by_name(session, opponent_name)
 
             if opponent is None:
+                clear()
                 # Couldn't find opponent
                 if opponent_name.isdigit():
                     print_warning("Skipping invitational (no stats available)")
@@ -851,7 +834,11 @@ season %s! You'll have to fix the DB by hand." \
                     # Display selection of possible teams to match
                     cnt = 1
                     for teamid,score in possible_teams.iteritems():
-                        name = session.query(Team).get(teamid).name
+                        try:
+                            _team = session.query(Team).get(teamid)
+                        except:
+                            _team = None
+                        name = 'DELETED' if _team is None else _team.name
                         print_comment("%d) %s" % (cnt, name))
                         cnt += 1
 
@@ -862,8 +849,8 @@ season %s! You'll have to fix the DB by hand." \
                     while not selection:
                         input=raw_input("Is `%s` one of the above? \
 (# or 'no') " % opponent_name, color='yellow')
-    
-                        if not is_yes(input):
+
+                        if input == 'no' or input == 'n':
                             selection = 'no'
                         else:
                             try:
@@ -913,14 +900,14 @@ season %s! You'll have to fix the DB by hand." \
 team `%s` in season `%s`!" % (opponent_name, season))
                 opponent_squad = Squad(season, opponent)
                 opponent.squads.append(opponent_squad)
-            
-            
+
+
             #Back to deciding ID of Game.
-            
+
             # - Parse Date
             month, day, year = [int(p) for p in entry[7].split('/')]
             date = datetime.date(year, month, day)
-            
+
             # Query database for matching Game
             game = session.query(Game)\
                           .filter(Game.opponents.any(id=opponent_squad.id))\
@@ -934,7 +921,7 @@ team `%s` in season `%s`!" % (opponent_name, season))
                 print_info("Creating non-existent game %s vs. %s on \
 %d/%d/%d" % (squadmember.squad.team.name, opponent_name,
                              month, day, year))
-                
+
                 # Determine respective scores of Game
                 winner = None
                 loser = None
@@ -942,10 +929,10 @@ team `%s` in season `%s`!" % (opponent_name, season))
                 score_low = None
                 try:
                     outcome = entry[9]
-                
+
                     score_low, score_high = sorted([int(s.strip())
                                         for s in outcome[1:].split('-')])
-                
+
                     if outcome[:1].lower()=='w':
                         winner = squadmember.squad
                         loser = opponent_squad
@@ -955,7 +942,7 @@ team `%s` in season `%s`!" % (opponent_name, season))
                 except Exception as e:
                     print_warning(str(e))
                     pass
-                
+
                 game_loc = opponent_location
                 if opponent_location=='home':
                     game_loc = opponent.name
@@ -1041,11 +1028,11 @@ team `%s` in season `%s`!" % (opponent_name, season))
         print_header("Patching scores.")
 
         reader = csv.reader(cli.patchscores)
-        
+
         # The first entry is the header entry
         headers = reader.next()
         maxlen = len(headers)
-        
+
         # Set resume logic parameters
         resumeat = None
         resumeat_l = None
@@ -1081,14 +1068,14 @@ be very wrong with the database. You should check it by hand.")
 
         # Set up iteration
         entries = [line for line in reader]
-        
+
         clear(stream=stderr)
         print_header("Adding game stats to DB")
         progbar = ProgressBar(max=len(entries), color='green', stream=stdout)
 
         # Map headers onto DB schema
         ## NOTE not really necessary now; assume consistent format
-        
+
         for entry in entries:
             progbar.update("%s - %s, %s" % (entry[7], entry[6], entry[8]))
             # Iterate through lines, adding and connecting things in db
@@ -1096,9 +1083,9 @@ be very wrong with the database. You should check it by hand.")
             while len(entry) < maxlen:
                 # Make sure line is of proper length
                 entry.append('')
-        
+
             changed = False
-        
+
             # -- RESUME LOGIC -- #
             if resumeat is not None:
                 # Resume entry at given player (Last name, first name)
@@ -1118,10 +1105,10 @@ be very wrong with the database. You should check it by hand.")
 
             # Get_game(session, date, team, season)
             game = get_game(session, entry[7], entry[8], entry[6])
-            
+
             # get_team_by_player_id(session, PlayerID, season)
             t1 = get_team_by_player_id(session, entry[0], entry[6])
-            
+
             # get_squad_by_season(session, squadName, season)
             t2 = get_squad_by_season(session, entry[8], entry[6])
 
@@ -1141,12 +1128,12 @@ be very wrong with the database. You should check it by hand.")
             elif wl.lower()=='l':
                 game.winner = t2
                 game.loser = t1
-                
+
             game.winner_score = max(s1, s2)
             game.loser_score = min(s1,s2)
             game.overtime = ot
             session.commit()
         session.commit()
 
-            
+
 
