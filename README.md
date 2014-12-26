@@ -1,5 +1,5 @@
 # ncaa
-
+DO NOT READ ANY FURTHER!
 March Madness simulation and prediction object model and helper modules
 
 ## Description
