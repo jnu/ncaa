@@ -3,7 +3,7 @@
 *I'm not actively developing this code any longer!*
 
 My current work on machine learning in march madness is being done in Scala in
-the [march madness](https://github.com/jnu/march-madness) repository.
+[this newer repository](https://github.com/jnu/march-madness).
 
 # ncaa
 
