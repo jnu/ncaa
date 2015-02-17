@@ -22,12 +22,24 @@ from scrapy.selector import Selector
 import datetime
 import csv
 import urlparse
+import os
+import errno
 from sys import exit, stderr
 from pprint import pprint
 
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
 
 game_stats_fn = "../data/sourcedocs/playerGame-stats_%s" \
                      % datetime.datetime.now().strftime("%Y-%h-%d")
+
+mkdir_p(game_stats_fn)
 
 fh = open(game_stats_fn, 'w')
 player_writer = csv.writer(fh)

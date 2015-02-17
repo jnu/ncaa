@@ -1,3 +1,10 @@
+# IMPORTANT
+
+*I'm not actively developing this code any longer!*
+
+My current work on machine learning in march madness is being done in Scala in
+the [march madness](https://github.com/jnu/march-madness) repository.
+
 # ncaa
 
 March Madness simulation and prediction object model and helper modules
@@ -15,13 +22,7 @@ prediction software. They reference a [sqlite database on my server](http://joen
 
 + `dbmgr.py`    Command line utility for managing the database. Provides some handy routines for mainting the database. Relies heavily on output from scrapers (also provided in this repo). Run `python dbmgr --help` for a complete list of options.
 
-+ `svmexample.py`    Demonstration of model training and Tournament simulation using data from the database. 
-
-### Helper modules
-
-+ `ncaalib.aux.output`   Helper module for standardized output formatting. Required to run `dbgmgr.py`.
-
-+ `ncaalib.aux.terminal` Module used by `ncaalib.aux.output` for terminal manipulation. Note that this module does not play well with Windows.
++ `svmexample.py`    Demonstration of model training and Tournament simulation using data from the database.
 
 ### Scrapers
 
@@ -29,19 +30,6 @@ Scrapers written for CasperJS. Not optimal for speed, but was at least convenien
 
 + _scrapers/ncaaPlayerStatScraper.js_   Scrape stats.ncaa.org for basketball statistics by player, store in CSV, process with _dbmgr.py_.
 
-+ _scrapers/casper.screenscraping.js_   Module I wrote to facilitate screen scraping with Casper
-
-+ _scrapers/casper.screenscraping.remote.js_    Facilitates scraping in Casper on the remote page.
-
-+ _jn.convenience.js_   Convenience functions I use to speed up JS screen scraping development.
-
-+ _jquery.js_   The famous jQuery.
-
-+ _axdpatch.js_ Quick fix for PhantomJS on some ASP.NET pages (not relevant to present context, but included with my scraping modules).
-
 ## License
 
-I wrote everything in this repo (except jQuery, obviously).
-
-Copyright (c) 2013 Joseph Nudell
 Freely distributable under the MIT license.
